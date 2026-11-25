@@ -29,6 +29,8 @@ type Candidate struct {
 	UnitCost  float64 // 每百万 token 积分成本
 	CostKnown bool    // 区分"0 成本"与"成本未知"
 	Cooling   bool    // 该平台/通道处于冷却（限流、连续失败等）
+	// Urgency 该平台的到期紧迫度倍率（1.0 起，口径同 misakano pick.go）。0 按 1。
+	Urgency float64
 }
 
 // Decision 选择结果，带可解释原因（写进请求日志，便于事后追责）。
@@ -57,6 +59,7 @@ func Choose(modelKey string, candidates []Candidate) (Decision, error) {
 			Model:     c.Model,
 			UnitCost:  c.UnitCost,
 			CostKnown: c.CostKnown,
+			Urgency:   c.Urgency,
 		})
 	}
 	if len(live) == 0 {
@@ -69,7 +72,11 @@ func Choose(modelKey string, candidates []Candidate) (Decision, error) {
 	var reason strings.Builder
 	fmt.Fprintf(&reason, "%s", modelKey)
 	if best.CostKnown {
-		fmt.Fprintf(&reason, " → %s (cost %.2f/1M)", best.Channel, best.UnitCost)
+		if best.Urgency > 1 {
+			fmt.Fprintf(&reason, " → %s (cost %.2f/1M ÷ urgency %.2f = %.3f)", best.Channel, best.UnitCost, best.Urgency, best.UnitCost/best.Urgency)
+		} else {
+			fmt.Fprintf(&reason, " → %s (cost %.2f/1M)", best.Channel, best.UnitCost)
+		}
 	} else {
 		fmt.Fprintf(&reason, " → %s (cost unknown)", best.Channel)
 	}

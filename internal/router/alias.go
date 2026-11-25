@@ -74,6 +74,22 @@ type Entry struct {
 	Model   string  // 发给该上游的原始 id，大小写敏感，原样使用
 	UnitCost float64 // 每百万 token 的积分成本（平台内货币）
 	CostKnown bool  // 区分"成本 0"与"成本未知"
+	// Urgency 该平台当前"到期紧迫度"倍率（1.0 起，越逼近到期越大，口径同 misakano
+	// pick.go 的 1.5~3.0）。0 或负数按 1 处理。
+	//
+	// 为什么做成无量纲倍率而不做汇率：三家积分不可通兑，换汇率是拍脑袋；而紧迫度
+	// 只是"这批额度多久要作废"，与货币无关。排序用 UnitCost/Urgency（生效成本），
+	// 于是"今天到期但稍贵"的通道会自然排到前面。
+	Urgency float64
+}
+
+// effectiveCost 生效成本：单位成本 ÷ 紧迫度。紧迫度 <=0 视为 1（不折扣）。
+func effectiveCost(e Entry) float64 {
+	u := e.Urgency
+	if u <= 0 {
+		u = 1
+	}
+	return e.UnitCost / u
 }
 
 // Group 按归一键把候选分组。返回：
@@ -118,8 +134,11 @@ func less(a, b Entry) bool {
 	if ak != bk {
 		return ak // 已知成本优先于未知
 	}
-	if ak && bk && a.UnitCost != b.UnitCost {
-		return a.UnitCost < b.UnitCost
+	if ak && bk {
+		ca, cb := effectiveCost(a), effectiveCost(b)
+		if ca != cb {
+			return ca < cb
+		}
 	}
 	return a.Channel < b.Channel
 }
