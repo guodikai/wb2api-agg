@@ -1,0 +1,40 @@
+name: agg-ci
+
+# 自编译流水线：测试我们新增的包（channel / router），再出单二进制 artifact。
+# 不跑上游全量测试（上游有自己的 workflow，且我们只对新增目录负责）。
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-amd64:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: test new packages
+        run: go test ./internal/channel/ ./internal/router/ -count=1 -v
+
+      - name: build single binary
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          mkdir -p dist
+          go build -trimpath -ldflags "-s -w" -o dist/wb2api-agg ./cmd/server
+          ls -lh dist/
+          sha256sum dist/wb2api-agg
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wb2api-agg-linux-amd64
+          path: dist/wb2api-agg
+          retention-days: 30
