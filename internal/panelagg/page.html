@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>聚合面板 · 码道</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin:0; padding:20px; font:14px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+         background:#0f1115; color:#e6e8eb; }
+  h1 { font-size:18px; margin:0 0 4px; }
+  .sub { color:#8b949e; font-size:12px; margin-bottom:18px; }
+  .card { background:#161920; border:1px solid #242a33; border-radius:10px; padding:14px 16px; margin-bottom:14px; }
+  .card h2 { font-size:14px; margin:0 0 10px; color:#c9d1d9; font-weight:600; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th,td { text-align:left; padding:6px 8px; border-bottom:1px solid #232830; }
+  th { color:#8b949e; font-weight:500; }
+  .ok { color:#3fb950; } .warn { color:#d29922; } .bad { color:#f85149; }
+  button { background:#238636; color:#fff; border:0; border-radius:6px; padding:7px 12px; font-size:13px; cursor:pointer; }
+  button:disabled { opacity:.45; cursor:default; }
+  input,textarea { width:100%; box-sizing:border-box; background:#0d1017; color:#e6e8eb;
+                   border:1px solid #2a3139; border-radius:6px; padding:8px; font-size:13px; }
+  textarea { min-height:64px; resize:vertical; }
+  .row { display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap; }
+  code { background:#0d1017; padding:2px 5px; border-radius:4px; font-size:12px; word-break:break-all; }
+  .hint { color:#8b949e; font-size:12px; margin-top:6px; }
+</style>
+</head>
+<body>
+<h1>聚合面板</h1>
+<div class="sub">新底座 · 一个进程内管 WorkBuddy / 码道 / 豆包（当前已接入：WorkBuddy、码道）</div>
+
+<div class="card">
+  <h2>访问密钥</h2>
+  <div class="row">
+    <input id="key" placeholder="面板 api_key（只存在本机浏览器）" style="flex:1">
+    <button onclick="saveKey()">保存</button>
+  </div>
+  <div class="hint">与主面板同一个 api_key；存在 localStorage，不发给任何第三方。</div>
+</div>
+
+<div class="card">
+  <h2>码道账号</h2>
+  <table>
+    <thead><tr><th>账号</th><th>用户</th><th>STS 到期</th><th>状态</th></tr></thead>
+    <tbody id="ca"><tr><td colspan="4" class="hint">未加载</td></tr></tbody>
+  </table>
+  <div class="hint">WorkBuddy 账号在<a href="/panel/" style="color:#58a6ff">主面板</a>里看（同一份账号池）。</div>
+</div>
+
+<div class="card">
+  <h2>登录码道（一次性）</h2>
+  <div class="row"><button id="btn1" onclick="startLogin()">① 生成授权链接</button></div>
+  <div id="step2" style="display:none;margin-top:10px">
+    <div class="hint">② 浏览器打开下面这条（在你自己电脑/手机上打开，不要在服务器上开）：</div>
+    <div class="row"><code id="url"></code></div>
+    <div class="hint">③ 授权后会跳到一条打不开的地址（http://127.0.0.1:18234/oauth/callback?code=...），把整条地址粘到这里：</div>
+    <textarea id="cb" placeholder="http://127.0.0.1:18234/oauth/callback?code=..."></textarea>
+    <div class="row"><button onclick="complete()">④ 完成登录</button><span id="msg"></span></div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let ticket = "";
+
+function saveKey(){ localStorage.setItem("aggApiKey", $("key").value.trim()); load(); }
+function api(path, opt={}){
+  const key = localStorage.getItem("aggApiKey") || "";
+  opt.headers = Object.assign({"Content-Type":"application/json"}, opt.headers||{});
+  if (key) opt.headers["Authorization"] = "Bearer " + key;
+  return fetch(path + (key && path.includes("?") ? "&" : (key ? "?" : "")) + (key ? "key="+encodeURIComponent(key) : ""), opt)
+    .then(async r => { const j = await r.json().catch(()=>({})); if(!r.ok) throw new Error((j.error&&j.error.message)||r.status); return j; });
+}
+
+function load(){
+  $("key").value = localStorage.getItem("aggApiKey") || "";
+  api("/panel/agg/api/overview").then(d=>{
+    const rows = (d.codearts||[]).map(a=>{
+      const cls = a.state==="ok" ? "ok" : (a.state==="need_login"||a.state==="need_relogin") ? "warn" : "bad";
+      const label = {ok:"正常", need_login:"待登录", need_relogin:"需重新登录", unreadable:"记录损坏"}[a.state] || a.state;
+      return `<tr><td><code>${a.id}</code></td><td>${a.user||"-"}</td><td>${a.sts_expires||"-"}</td><td class="${cls}">${label}</td></tr>`;
+    }).join("");
+    $("ca").innerHTML = rows || `<tr><td colspan="4" class="hint">还没有码道账号，用下面的流程登录一个</td></tr>`;
+  }).catch(e=>{ $("ca").innerHTML = `<tr><td colspan="4" class="bad">${e.message}</td></tr>`; });
+}
+
+function startLogin(){
+  $("btn1").disabled = true; $("msg").textContent = "";
+  api("/panel/agg/api/codearts/login", {method:"POST", body:"{}"}).then(d=>{
+    ticket = d.ticket; $("url").textContent = d.login_url; $("step2").style.display = "block";
+  }).catch(e=>{ alert(e.message); }).finally(()=>{ $("btn1").disabled = false; });
+}
+
+function complete(){
+  $("msg").textContent = "处理中…";
+  api("/panel/agg/api/codearts/complete", {method:"POST", body: JSON.stringify({ticket, callback_url: $("cb").value})})
+    .then(d=>{ $("msg").textContent = "成功：" + (d.user_name||d.user_id); $("step2").style.display="none"; load(); })
+    .catch(e=>{ $("msg").textContent = "失败：" + e.message; });
+}
+
+load();
+</script>
+</body>
+</html>

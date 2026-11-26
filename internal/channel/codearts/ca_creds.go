@@ -131,6 +131,19 @@ func NewClient() *Client {
 	}
 }
 
+// SetEndpoints 覆盖端点（测试或私有化部署用；空值不改）。
+func (c *Client) SetEndpoints(sts, snap, portal string) {
+	if sts != "" {
+		c.stsHost = sts
+	}
+	if snap != "" {
+		c.snapHost = snap
+	}
+	if portal != "" {
+		c.portalHost = portal
+	}
+}
+
 // PKCE code_verifier / code_challenge（S256）。
 type PKCE struct {
 	Verifier  string

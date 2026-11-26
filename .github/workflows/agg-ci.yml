@@ -22,7 +22,7 @@ jobs:
           cache: true
 
       - name: test new packages
-        run: go test ./internal/channel/... ./internal/router/ ./internal/agg/ ./internal/creds/ -count=1 -v
+        run: go test ./internal/channel/... ./internal/router/ ./internal/agg/ ./internal/creds/ ./internal/panelagg/ -count=1 -v
 
       - name: build single binary
         env:

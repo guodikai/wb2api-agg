@@ -24,11 +24,13 @@ type Mux struct {
 	Registry *channel.Registry
 	// MaxBody 请求体读取上限（0 = 64MB）。
 	MaxBody int64
+	// Panel 我们自己的小面板（/panel/agg/）。nil 时这些路径交回上游。
+	Panel http.Handler
 }
 
 // Wrap 返回包好中间件的 handler，把它塞进 http.Server.Handler 即可。
 func Wrap(next http.Handler, reg *channel.Registry) http.Handler {
-	return &Mux{Next: next, Registry: reg}
+	return &Mux{Next: next, Registry: reg, Panel: buildPanel()}
 }
 
 func (m *Mux) maxBody() int64 {
@@ -39,6 +41,11 @@ func (m *Mux) maxBody() int64 {
 }
 
 func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// 我们自己的面板页：只认 /panel/agg/ 前缀，其余 /panel/* 交给上游。
+	if m.Panel != nil && strings.HasPrefix(r.URL.Path, "/panel/agg") {
+		m.Panel.ServeHTTP(w, r)
+		return
+	}
 	if r.Method != http.MethodPost || !strings.HasPrefix(r.URL.Path, "/v1/chat/completions") {
 		m.Next.ServeHTTP(w, r)
 		return
