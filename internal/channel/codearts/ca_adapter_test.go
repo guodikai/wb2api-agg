@@ -138,3 +138,28 @@ func TestAdapterChatUpstreamError(t *testing.T) {
 		t.Fatal("上游 403 应返回错误")
 	}
 }
+
+// 空账号 = 让平台自己选号（当前策略：第一个可用）。没有这条，聚合层传空账号会直接失败。
+func TestAdapterChatEmptyAccountPicksAny(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(sseBody))
+	}))
+	defer srv.Close()
+
+	c := NewClient()
+	c.chatEndpointOverride = srv.URL
+	fc := &fakeCreds{cred: SignCredential{AccessKeyID: "AK", SecretAccessKey: "SK", SecurityToken: "ST"}}
+	a := NewAdapter(c, fc, 0)
+
+	var buf bytes.Buffer
+	if err := a.Chat(context.Background(), "", "glm-5.3-flash", []byte(`{"messages":[]}`), &buf); err != nil {
+		t.Fatalf("空账号应自动选号: %v", err)
+	}
+	if fc.calls == 0 {
+		t.Error("应通过 CredentialSource 取过凭据")
+	}
+	if !strings.Contains(buf.String(), "[DONE]") {
+		t.Error("SSE 不完整")
+	}
+}

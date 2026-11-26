@@ -7,6 +7,7 @@ package codearts
 import (
 	"context"
 	"io"
+	"strings"
 	"sync"
 	"time"
 
@@ -81,7 +82,15 @@ func (a *Adapter) Models(ctx context.Context) ([]channel.ModelInfo, error) {
 // 为什么不直接 io.Copy：上游用注释行做心跳、可能用多行 data 拼事件，直接透传
 // 会让下游解析器各自踩一遍坑。这里统一成 "data: <json>\n\n" + 结尾 [DONE]。
 func (a *Adapter) Chat(ctx context.Context, accountID, model string, body []byte, w io.Writer) error {
-	cred, err := a.creds.For(ctx, accountID)
+	// accountID 为空 = 没指定账号，由本平台内部选（当前策略：第一个可用账号）。
+	// 平台内的"到期优先/余额权重"在 P4 接入统一调度后由上层传入具体账号。
+	var cred SignCredential
+	var err error
+	if strings.TrimSpace(accountID) == "" {
+		_, cred, err = a.creds.Any(ctx)
+	} else {
+		cred, err = a.creds.For(ctx, accountID)
+	}
 	if err != nil {
 		return err
 	}
