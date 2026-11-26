@@ -28,6 +28,14 @@ type CodeArtsRecord struct {
 	SecurityToken   string            `json:"security_token"`
 	Expiration      string            `json:"expiration"`
 	UpdatedAt       string            `json:"updated_at"`
+
+	// 积分/套餐（后台每 10 分钟刷新，只读接口 statistics/plugin）
+	Credits          float64 `json:"credits,omitempty"`
+	CreditsTotal     float64 `json:"credits_total,omitempty"`
+	CreditsUsed      float64 `json:"credits_used,omitempty"`
+	CreditsExpiring  float64 `json:"credits_expiring,omitempty"`
+	CreditsPeriod    string  `json:"credits_period,omitempty"`
+	CreditsUpdatedAt string  `json:"credits_updated_at,omitempty"`
 }
 
 // Auth 转成参照实现的账号对象（导出版本，供面板等外部包使用）。
