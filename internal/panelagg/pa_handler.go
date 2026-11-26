@@ -78,6 +78,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.overview(w, r)
 	case r.URL.Path == "/panel/agg/api/codearts/login" && r.Method == http.MethodPost:
 		h.startLogin(w, r)
+	case r.URL.Path == "/panel/agg/api/codearts/models" && r.Method == http.MethodGet:
+		h.codeartsModels(w, r)
 	case r.URL.Path == "/panel/agg/api/codearts/complete" && r.Method == http.MethodPost:
 		h.completeLogin(w, r)
 	default:
@@ -137,6 +139,36 @@ func (h *Handler) overview(w http.ResponseWriter, r *http.Request) {
 		out.CodeArts = append(out.CodeArts, a)
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// codeartsModels 用第一个可用账号拉上游模型目录（诊断用：确认能调哪些 id）。
+func (h *Handler) codeartsModels(w http.ResponseWriter, r *http.Request) {
+	ids, err := h.cfg.Store.List(creds.PlatformCodeArts)
+	if err != nil || len(ids) == 0 {
+		writeErr(w, http.StatusNotFound, "no_account", "还没有码道账号")
+		return
+	}
+	var rec creds.CodeArtsRecord
+	if err := h.cfg.Store.Load(creds.PlatformCodeArts, ids[0], &rec); err != nil {
+		writeErr(w, http.StatusInternalServerError, "load_failed", err.Error())
+		return
+	}
+	models, err := h.cfg.Client.FetchModels(r.Context(), codearts.SignCredential{
+		AccessKeyID:     rec.AccessKeyID,
+		SecretAccessKey: rec.SecretAccessKey,
+		SecurityToken:   rec.SecurityToken,
+	}, "")
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, "fetch_failed", err.Error())
+		return
+	}
+	list := make([]map[string]any, 0, len(models))
+	for _, m := range models {
+		list = append(list, map[string]any{
+			"id": m.ID, "name": m.Name, "context_window": m.ContextWindow, "max_tokens": m.MaxTokens,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"account": ids[0], "count": len(list), "models": list})
 }
 
 // startLogin 生成授权链接（PKCE + ticket），把私钥留在内存等回调。
