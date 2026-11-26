@@ -7,6 +7,7 @@ package panelagg
 
 import (
 	"crypto/rand"
+	"encoding/base64"
 	_ "embed"
 	"encoding/json"
 	"fmt"
@@ -153,11 +154,7 @@ func (h *Handler) codeartsModels(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "load_failed", err.Error())
 		return
 	}
-	models, err := h.cfg.Client.FetchModels(r.Context(), codearts.SignCredential{
-		AccessKeyID:     rec.AccessKeyID,
-		SecretAccessKey: rec.SecretAccessKey,
-		SecurityToken:   rec.SecurityToken,
-	}, "")
+	models, err := h.cfg.Client.FetchModels(rec.Auth())
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, "fetch_failed", err.Error())
 		return
@@ -166,6 +163,7 @@ func (h *Handler) codeartsModels(w http.ResponseWriter, r *http.Request) {
 	for _, m := range models {
 		list = append(list, map[string]any{
 			"id": m.ID, "name": m.Name, "context_window": m.ContextWindow, "max_tokens": m.MaxTokens,
+			"benefit": m.Benefit,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"account": ids[0], "count": len(list), "models": list})
@@ -197,7 +195,7 @@ func (h *Handler) startLogin(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ticket":    ticket,
-		"login_url": h.cfg.Client.BuildAuthorizeURL(h.cfg.Login, ticket, pkce.Challenge, port),
+		"login_url": h.cfg.Client.BuildAuthorizeURL(h.cfg.Login, ticket, pkce.Challenge, pkce.Method, port),
 		"hint":      "浏览器打开 login_url 完成授权；把跳转后（打不开）的地址整条粘贴到下方完成登录",
 	})
 }
@@ -235,31 +233,26 @@ func (h *Handler) completeLogin(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadGateway, "exchange_failed", err.Error())
 		return
 	}
-	userID := extractUserID(out)
+	userID := out.UserID
 	userName := out.UserName
 	domainID := out.DomainID
 
-	// 换码响应通常只在旧通道里带身份；真实 STS 的 authorization_code 不带。
-	// 按参照项目的顺序兜底：caller-identity → current/user → refresh_token 的 sub。
+	// 换码响应没有身份时，按参照实现的三级兜底：caller-identity → current/user → RT 的 sub
 	if userID == "" || userName == "" {
 		cred := codearts.SignCredential{
 			AccessKeyID:     out.Credentials.AccessKeyID,
 			SecretAccessKey: out.Credentials.SecretAccessKey,
 			SecurityToken:   out.Credentials.SecurityToken,
 		}
-		if id, ierr := h.cfg.Client.ResolveIdentity(r.Context(), cred, out.RefreshToken); ierr == nil {
-			if userID == "" {
-				userID = id.UserID
-			}
-			if userName == "" {
-				userName = id.UserName
-			}
-			if domainID == "" {
-				domainID = id.DomainID
-			}
+		if uid, name, dom, err := codearts.CallerIdentity(cred); err == nil && uid != "" {
+			userID, userName, domainID = uid, name, dom
+		} else if uid, name, dom, err := codearts.CurrentUser(cred); err == nil && uid != "" {
+			userID, userName, domainID = uid, name, dom
+		} else if sub := identityFromRefreshToken(out.RefreshToken); sub != "" {
+			userID = sub
 		} else {
 			writeErrf(w, http.StatusBadGateway, "no_identity",
-				"换取成功但无法确定账号身份：%v（换码字段：%s）", ierr, strings.Join(topLevelKeys(out.RawJSON), ", "))
+				"换取成功但无法确定账号身份（换码字段：%s）", strings.Join(topLevelKeys(out.RawJSON), ", "))
 			return
 		}
 	}
@@ -367,6 +360,26 @@ func pickName(m map[string]any) string {
 		}
 	}
 	return ""
+}
+
+// identityFromRefreshToken 从 JWT 形式的 refresh_token 里取 sub（照抄参照实现，
+// 作为身份兜底的最后一级，纯本地无网络）。
+func identityFromRefreshToken(tok string) string {
+	parts := strings.Split(tok, ".")
+	if len(parts) < 2 {
+		return ""
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return ""
+	}
+	var payload struct {
+		Sub string `json:"sub"`
+	}
+	if json.Unmarshal(raw, &payload) != nil {
+		return ""
+	}
+	return strings.TrimSpace(payload.Sub)
 }
 
 // topLevelKeys 返回顶层字段名（排序），用于诊断。

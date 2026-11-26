@@ -42,9 +42,9 @@ func RegistryFromEnv() *channel.Registry {
 		return reg
 	}
 
-	client := codearts.NewClient()
+	client := codearts.New(0)
 	src := creds.NewCodeArtsSource(store, client, codearts.DefaultLoginConfig())
-	if err := reg.Register(codearts.NewAdapter(client, src, 0)); err != nil {
+	if err := reg.Register(codearts.NewAdapter(client, src)); err != nil {
 		log.Printf("[agg] 注册码道平台失败：%v", err)
 		return reg
 	}
