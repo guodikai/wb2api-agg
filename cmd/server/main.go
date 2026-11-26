@@ -39,6 +39,7 @@ import (
 	"github.com/misakano7545/workbuddy2api-panel/internal/updater"
 	"github.com/misakano7545/workbuddy2api-panel/internal/upstream"
 	"github.com/misakano7545/workbuddy2api-panel/internal/usage"
+	"github.com/misakano7545/workbuddy2api-panel/internal/agg"
 )
 
 // appVersion 面板版本，透出到 /panel/api/overview。
@@ -693,7 +694,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              cfg.Listen,
-		Handler:           gw,
+		Handler:           agg.Wrap(gw, agg.RegistryFromEnv()),
 		ReadHeaderTimeout: 30 * time.Second,
 		// ReadTimeout 覆盖整个请求读取（含 body 上传）：防慢速 body 拖死连接。
 		// 请求体已无网关侧上限（max_body_mb 移除）。缺省 300s（issue #100：旧固定
