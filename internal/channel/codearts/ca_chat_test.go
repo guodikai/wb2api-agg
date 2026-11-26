@@ -37,7 +37,7 @@ func TestChatStreamSendsHeadersSignsAndReadsSSE(t *testing.T) {
 	cred := SignCredential{AccessKeyID: "AK", SecretAccessKey: "SK", SecurityToken: "ST"}
 	body := []byte(`{"model":"ignored","messages":[{"role":"user","content":"hi"}],"stream":true}`)
 
-	rc, err := c.ChatStream(context.Background(), "deepseek-v3", body, cred, "USER_TOK", ChatOptions{
+	rc, err := c.ChatStream(context.Background(), "deepseek-v3", body, cred, ChatOptions{
 		TraceID: "trace-1", ChatID: "chat-1", SessionID: "sess-1", Benefit: true, Endpoint: srv.URL,
 	})
 	if err != nil {
@@ -90,7 +90,7 @@ func TestChatStreamUpstreamError(t *testing.T) {
 
 	c := NewClient()
 	_, err := c.ChatStream(context.Background(), "m", []byte(`{}`),
-		SignCredential{AccessKeyID: "AK", SecretAccessKey: "SK"}, "T", ChatOptions{Endpoint: srv.URL})
+		SignCredential{AccessKeyID: "AK", SecretAccessKey: "SK"}, ChatOptions{Endpoint: srv.URL})
 	if err == nil {
 		t.Fatal("401 应报错")
 	}
@@ -103,7 +103,7 @@ func TestChatStreamUpstreamError(t *testing.T) {
 func TestChatStreamRejectsBadJSON(t *testing.T) {
 	c := NewClient()
 	if _, err := c.ChatStream(context.Background(), "m", []byte(`{oops`),
-		SignCredential{}, "T", ChatOptions{}); err == nil {
+		SignCredential{}, ChatOptions{}); err == nil {
 		t.Fatal("非法 JSON 应报错")
 	}
 }

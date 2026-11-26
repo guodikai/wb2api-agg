@@ -62,8 +62,11 @@ type ChatOptions struct {
 }
 
 // ChatStream 发一次 chat，返回 SSE 流（调用方负责 Close）。
+//
 // body 为 OpenAI 兼容的请求体原始 JSON；model 会覆盖其中 model 字段。
-func (c *Client) ChatStream(ctx context.Context, model string, body []byte, cred SignCredential, userToken string, opt ChatOptions) (io.ReadCloser, error) {
+// x-auth-token 固定取 cred.SecurityToken——与官方插件一致（HITZY 的 sendChatV2
+// 也传 cred.SecurityToken）。签名与用户态令牌是两套东西，缺一都 401。
+func (c *Client) ChatStream(ctx context.Context, model string, body []byte, cred SignCredential, opt ChatOptions) (io.ReadCloser, error) {
 	payload := map[string]any{}
 	if len(body) > 0 {
 		if err := json.Unmarshal(body, &payload); err != nil {
@@ -84,7 +87,7 @@ func (c *Client) ChatStream(ctx context.Context, model string, body []byte, cred
 	if err != nil {
 		return nil, err
 	}
-	for k, v := range ChatHeaders(userToken, opt.TraceID, LangZHCN) {
+	for k, v := range ChatHeaders(cred.SecurityToken, opt.TraceID, LangZHCN) {
 		req.Header.Set(k, v)
 	}
 	if opt.Benefit {
