@@ -84,7 +84,7 @@ func (p *PackageInfo) Summary() (total, used, remain, expiring float64, period s
 
 // FetchPackageInfo 查一次积分/套餐（只读，不消耗额度）。
 func (c *Client) FetchPackageInfo(ctx context.Context, cred SignCredential) (*PackageInfo, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.snapHost+EpStatisticsPlugin, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, SnapEngineApiHost+EpStatisticsPlugin, nil)
 	if err != nil {
 		return nil, err
 	}
