@@ -1,7 +1,6 @@
 // wire.go 启动期装配：把已登录的平台适配器注册进 registry。
 //
-// 放在我们自己的包里，main.go 只多一行调用——这是与上游唯一的接触面，
-// 上游重构 handler 不会影响我们（计划书 §七"上游冲突面≤2 行"）。
+// 放在我们自己的包里，main.go 只多一行调用——这是与上游唯一的接触面。
 package agg
 
 import (
@@ -11,16 +10,17 @@ import (
 
 	"github.com/misakano7545/workbuddy2api-panel/internal/channel"
 	"github.com/misakano7545/workbuddy2api-panel/internal/channel/codearts"
+	"github.com/misakano7545/workbuddy2api-panel/internal/channel/doubao"
 	"github.com/misakano7545/workbuddy2api-panel/internal/creds"
 )
 
-// RegistryFromEnv 从环境变量 WB_AGG_CREDS 指定的目录装配 registry。
+// RegistryFromEnv 从 WB_AGG_CREDS（默认 /opt/wb2api-agg/creds）装配 registry。
 //
-//   - 目录不存在 / 没有码道账号 → 只返回空 registry（网关行为与上游完全一致）
-//   - 有账号 → 注册码道适配器，`codearts:` 前缀的请求才可用
+//   - 目录不存在 → 空 registry（行为与上游完全一致）
+//   - 有码道账号 → 注册码道
+//   - 有豆包账号 → 注册豆包
 //
-// 任何失败都只记日志、不阻断启动：网关的主线是 WorkBuddy，不能因为扩展平台
-// 配置有问题就起不来。
+// 任何失败只记日志、不阻断启动：网关主线是 WorkBuddy，不能因为扩展平台配置有问题就起不来。
 func RegistryFromEnv() *channel.Registry {
 	reg := channel.NewRegistry()
 
@@ -31,25 +31,35 @@ func RegistryFromEnv() *channel.Registry {
 	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
 		return reg
 	}
-
 	store, err := creds.New(dir)
 	if err != nil {
 		log.Printf("[agg] 凭据目录不可用（%s）：%v；仅启用上游平台", dir, err)
 		return reg
 	}
-	ids, err := store.List(creds.PlatformCodeArts)
-	if err != nil || len(ids) == 0 {
-		return reg
+
+	// 码道：消费侧独占 RT，自己刷新。
+	if ids, _ := store.List(creds.PlatformCodeArts); len(ids) > 0 {
+		client := codearts.New(0)
+		src := creds.NewCodeArtsSource(store, client, codearts.DefaultLoginConfig())
+		if err := reg.Register(codearts.NewAdapter(client, src)); err != nil {
+			log.Printf("[agg] 注册码道平台失败：%v", err)
+		} else {
+			log.Printf("[agg] 码道已启用（%d 个账号）", len(ids))
+		}
 	}
 
-	client := codearts.New(0)
-	src := creds.NewCodeArtsSource(store, client, codearts.DefaultLoginConfig())
-	if err := reg.Register(codearts.NewAdapter(client, src)); err != nil {
-		log.Printf("[agg] 注册码道平台失败：%v", err)
-		return reg
+	// 豆包：cookie 由签到引擎维护，这里只读。
+	if ids, _ := store.List(creds.PlatformDoubao); len(ids) > 0 {
+		if err := reg.Register(doubao.NewAdapter(doubao.New(""), creds.NewDoubaoSource(store))); err != nil {
+			log.Printf("[agg] 注册豆包平台失败：%v", err)
+		} else {
+			log.Printf("[agg] 豆包已启用（%d 个账号）", len(ids))
+		}
 	}
-	log.Printf("[agg] 已启用平台: %v（凭据目录 %s，码道账号 %d 个）",
-		kindsOf(reg), filepath.Clean(dir), len(ids))
+
+	if len(reg.Kinds()) > 0 {
+		log.Printf("[agg] 已启用平台: %v（凭据目录 %s）", kindsOf(reg), filepath.Clean(dir))
+	}
 	return reg
 }
 

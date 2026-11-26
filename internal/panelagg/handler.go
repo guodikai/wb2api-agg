@@ -32,6 +32,8 @@ type Config struct {
 	Client *codearts.Client
 	Login  codearts.LoginConfig
 	Now    func() time.Time
+	// DoubaoBase 测试用：覆盖豆包上游地址（空 = 生产 www.doubao.com）。
+	DoubaoBase string
 }
 
 // Handler 面板请求分发。
@@ -79,6 +81,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.overview(w, r)
 	case r.URL.Path == "/panel/agg/api/codearts/login" && r.Method == http.MethodPost:
 		h.startLogin(w, r)
+	case r.URL.Path == "/panel/agg/api/doubao/import" && r.Method == http.MethodPost:
+		h.handleDoubaoImport(w, r)
+	case r.URL.Path == "/panel/agg/api/doubao/probe" && r.Method == http.MethodGet:
+		h.handleDoubaoProbe(w, r)
 	case r.URL.Path == "/panel/agg/api/codearts/models" && r.Method == http.MethodGet:
 		h.codeartsModels(w, r)
 	case r.URL.Path == "/panel/agg/api/codearts/complete" && r.Method == http.MethodPost:
@@ -111,7 +117,27 @@ func (h *Handler) overview(w http.ResponseWriter, r *http.Request) {
 	out := struct {
 		Platforms []string `json:"platforms"`
 		CodeArts  []acct   `json:"codearts"`
+		Doubao    []acct   `json:"doubao"`
 	}{Platforms: []string{"workbuddy", "codearts", "doubao"}}
+
+	if ids, err := h.cfg.Store.List(creds.PlatformDoubao); err == nil {
+		for _, id := range ids {
+			var rec creds.DoubaoRecord
+			a := acct{ID: id}
+			if err := h.cfg.Store.Load(creds.PlatformDoubao, id, &rec); err != nil {
+				a.State = "unreadable"
+			} else {
+				a.User = rec.Name
+				a.UpdatedAt = rec.UpdatedAt
+				if miss := creds.MissingCookies(rec.Cookies); len(miss) > 0 || rec.DeviceID == "" {
+					a.State = "need_login"
+				} else {
+					a.State = "ok"
+				}
+			}
+			out.Doubao = append(out.Doubao, a)
+		}
+	}
 
 	ids, err := h.cfg.Store.List(creds.PlatformCodeArts)
 	if err != nil {
