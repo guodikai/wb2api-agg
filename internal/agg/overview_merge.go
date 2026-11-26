@@ -96,6 +96,7 @@ func collectPlatformAccounts(st *creds.Store) []map[string]any {
 					"credits_used":               int64(rec.CreditsUsed),
 					"credits_expiring":           int64(rec.CreditsExpiring),
 					"credits_earliest_expiry":    creditsExpiryOf(rec),
+					"credits_breakdown":          rec.CreditsBreakdown,
 				},
 			))
 		}

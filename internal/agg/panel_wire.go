@@ -44,6 +44,12 @@ func buildPanel() http.Handler {
 	}
 
 	return panelagg.New(panelagg.Config{
+		CreditSamples: func(hours int, platform string) any {
+			if h := SharedCreditHistory(); h != nil {
+				return h.Recent(hours, platform)
+			}
+			return []any{}
+		},
 		RecentRequests: func(limit int) any {
 			if l := sharedReqLog(); l != nil {
 				return l.Recent(limit)
