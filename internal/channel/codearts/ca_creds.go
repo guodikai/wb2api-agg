@@ -64,6 +64,8 @@ type TokenResponse struct {
 	RefreshToken string           `json:"refresh_token"`
 	Credentials  Credentials      `json:"credentials"`
 	Credential   LegacyCredential `json:"credential"`
+	// RawJSON 原始响应（诊断字段差异用；不参与序列化）。
+	RawJSON []byte `json:"-"`
 	// 错误字段（refresh 失败时上游会返回）。
 	Error        string `json:"error"`
 	ErrorCode    string `json:"error_code"`

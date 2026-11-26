@@ -102,6 +102,7 @@ func (c *Client) requestToken(ctx context.Context, cfg LoginConfig, form url.Val
 	}
 
 	var out TokenResponse
+	out.RawJSON = append([]byte(nil), raw...)
 	if err := json.Unmarshal(raw, &out); err != nil {
 		return nil, fmt.Errorf("解析 token 响应失败: %w body=%s", err, truncate(string(raw), 200))
 	}

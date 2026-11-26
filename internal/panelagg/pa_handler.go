@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -202,13 +203,37 @@ func (h *Handler) completeLogin(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadGateway, "exchange_failed", err.Error())
 		return
 	}
-	userID := out.UserID
+	userID := extractUserID(out)
+	userName := out.UserName
+	// 兜底：换码响应没带身份时，用刚拿到的 STS 凭据签一次 current/user 补上。
+	if userID == "" || userName == "" {
+		if info, err := h.cfg.Client.FetchCurrentUser(r.Context(), codearts.SignCredential{
+			AccessKeyID:     out.Credentials.AccessKeyID,
+			SecretAccessKey: out.Credentials.SecretAccessKey,
+			SecurityToken:   out.Credentials.SecurityToken,
+		}, ""); err == nil {
+			if v := pickID(info); v != "" {
+				userID = v
+			}
+			if v := pickName(info); v != "" {
+				userName = v
+			}
+		} else {
+			// 只记键名级别的诊断，不打值
+			keys := topLevelKeys(out.RawJSON)
+			writeErr(w, http.StatusBadGateway, "no_user_id",
+				"换码响应缺身份字段（%s），补取 current/user 也失败：%v", strings.Join(keys, ", "), err)
+			return
+		}
+	}
 	if userID == "" {
-		writeErr(w, http.StatusBadGateway, "no_user_id", "上游没有返回 user_id")
+		keys := topLevelKeys(out.RawJSON)
+		writeErr(w, http.StatusBadGateway, "no_user_id",
+			"上游没有返回可用的用户标识（换码字段：%s）", strings.Join(keys, ", "))
 		return
 	}
 	rec := creds.CodeArtsRecord{
-		UserID: userID, UserName: out.UserName, DomainID: out.DomainID,
+		UserID: userID, UserName: userName, DomainID: out.DomainID,
 		RefreshTok: out.RefreshToken, Verifier: p.verifier,
 		DPoPJWK:         map[string]string(p.jwk),
 		AccessKeyID:     out.Credentials.AccessKeyID,
@@ -221,7 +246,7 @@ func (h *Handler) completeLogin(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "save_failed", err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "user_id": userID, "user_name": out.UserName})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "user_id": userID, "user_name": userName})
 }
 
 func (h *Handler) takePending(ticket string) (*pendingLogin, bool) {
@@ -241,13 +266,97 @@ func (h *Handler) takePending(ticket string) (*pendingLogin, bool) {
 	return p, true
 }
 
+// extractUserID 兼容几种可能的身份字段位置。
+func extractUserID(out *codearts.TokenResponse) string {
+	if v := strings.TrimSpace(out.UserID); v != "" {
+		return v
+	}
+	// 兜底：从原始 JSON 里按常见路径找
+	var m map[string]any
+	if json.Unmarshal(out.RawJSON, &m) != nil {
+		return ""
+	}
+	pick := func(v any) string {
+		if s, ok := v.(string); ok {
+			return strings.TrimSpace(s)
+		}
+		return ""
+	}
+	for _, k := range []string{"user_id", "userId", "uid", "account_id", "accountId", "subject", "sub"} {
+		if v := pick(m[k]); v != "" {
+			return v
+		}
+	}
+	for _, obj := range []string{"user", "principal", "account", "profile"} {
+		if sub, ok := m[obj].(map[string]any); ok {
+			for _, k := range []string{"id", "user_id", "userId", "uid", "name"} {
+				if v := pick(sub[k]); v != "" {
+					return v
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// pickID / pickName 从任意层级的身份对象里取 id 与显示名。
+func pickID(m map[string]any) string {
+	for _, k := range []string{"user_id", "userId", "userID", "id", "uid", "account_id", "accountId", "subject", "sub", "principal_id"} {
+		if v, ok := m[k].(string); ok && strings.TrimSpace(v) != "" {
+			return strings.TrimSpace(v)
+		}
+	}
+	for _, k := range []string{"user", "principal", "account", "profile", "identity"} {
+		if sub, ok := m[k].(map[string]any); ok {
+			if v := pickID(sub); v != "" {
+				return v
+			}
+		}
+	}
+	return ""
+}
+
+func pickName(m map[string]any) string {
+	for _, k := range []string{"user_name", "userName", "username", "name", "display_name", "displayName", "account", "email"} {
+		if v, ok := m[k].(string); ok && strings.TrimSpace(v) != "" {
+			return strings.TrimSpace(v)
+		}
+	}
+	for _, k := range []string{"user", "principal", "account", "profile", "identity"} {
+		if sub, ok := m[k].(map[string]any); ok {
+			if v := pickName(sub); v != "" {
+				return v
+			}
+		}
+	}
+	return ""
+}
+
+// topLevelKeys 返回顶层字段名（排序），用于诊断。
+func topLevelKeys(raw []byte) []string {
+	var m map[string]any
+	if json.Unmarshal(raw, &m) != nil {
+		return nil
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-func writeErr(w http.ResponseWriter, status int, code, msg string) {
+func writeErr(w http.ResponseWriter, status int, code, format string, args ...any) {
+	msg := format
+	if len(args) > 0 {
+		msg = fmt.Sprintf(format, args...)
+	}
 	writeJSON(w, status, map[string]any{"error": map[string]any{"code": code, "message": msg}})
 }
 
