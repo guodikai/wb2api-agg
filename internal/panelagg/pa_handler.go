@@ -226,13 +226,13 @@ func (h *Handler) completeLogin(w http.ResponseWriter, r *http.Request) {
 				domainID = id.DomainID
 			}
 		} else {
-			writeErr(w, http.StatusBadGateway, "no_identity",
+			writeErrf(w, http.StatusBadGateway, "no_identity",
 				"换取成功但无法确定账号身份：%v（换码字段：%s）", ierr, strings.Join(topLevelKeys(out.RawJSON), ", "))
 			return
 		}
 	}
 	if userID == "" {
-		writeErr(w, http.StatusBadGateway, "no_user_id",
+		writeErrf(w, http.StatusBadGateway, "no_user_id",
 			"上游没有返回可用的用户标识（换码字段：%s）", strings.Join(topLevelKeys(out.RawJSON), ", "))
 		return
 	}
@@ -357,12 +357,13 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-func writeErr(w http.ResponseWriter, status int, code, format string, args ...any) {
-	msg := format
-	if len(args) > 0 {
-		msg = fmt.Sprintf(format, args...)
-	}
+func writeErr(w http.ResponseWriter, status int, code, msg string) {
 	writeJSON(w, status, map[string]any{"error": map[string]any{"code": code, "message": msg}})
+}
+
+// writeErrf 格式化版本（仅用于常量格式串，避免 vet 的非常量格式警告）。
+func writeErrf(w http.ResponseWriter, status int, code, format string, args ...any) {
+	writeErr(w, status, code, fmt.Sprintf(format, args...))
 }
 
 func randomHex(n int) string {
