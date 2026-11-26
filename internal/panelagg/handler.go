@@ -149,6 +149,9 @@ func (h *Handler) overview(w http.ResponseWriter, r *http.Request) {
 		a.User = rec.UserName
 		a.Expires = rec.Expiration
 		a.UpdatedAt = rec.UpdatedAt
+		a.Credits, a.Total = rec.Credits, rec.CreditsTotal
+		a.Used, a.Expiring = rec.CreditsUsed, rec.CreditsExpiring
+		a.Period, a.Breakdown = rec.CreditsPeriod, rec.CreditsBreakdown
 		switch {
 		case rec.SecurityToken == "" || rec.AccessKeyID == "":
 			a.State = "need_login"
