@@ -52,6 +52,15 @@
     var box = el('div');
     box.id = 'aggPlatformBox';
     sec.appendChild(box);
+
+    var h3 = el('h2', null, '最近请求');
+    h3.style.marginTop = '18px';
+    sec.appendChild(h3);
+    var reqBox = el('div');
+    reqBox.id = 'aggReqBox';
+    reqBox.className = 'hint';
+    reqBox.textContent = '加载中…';
+    sec.appendChild(reqBox);
     return sec;
   }
 
@@ -99,6 +108,47 @@
     box.appendChild(table);
   }
 
+  function renderRequests(d) {
+    var box = document.getElementById('aggReqBox');
+    if (!box) return;
+    var evs = (d && d.events) || [];
+    if (!evs.length) {
+      box.className = 'hint';
+      box.textContent = '还没有请求记录 —— 用 codearts: 开头的模型发一次对话就会出现。';
+      return;
+    }
+    box.className = '';
+    var table = el('table', 'table');
+    var thead = el('thead');
+    var tr = el('tr');
+    ['时间', '平台', '模型', '类型', '状态', '耗时', 'token', '错误'].forEach(function (t) {
+      tr.appendChild(el('th', null, t));
+    });
+    thead.appendChild(tr);
+    table.appendChild(thead);
+    var tbody = el('tbody');
+    evs.forEach(function (e) {
+      var r = el('tr');
+      var t = String(e.time || '').replace('T', ' ').slice(5, 19);
+      r.appendChild(el('td', null, t));
+      r.appendChild(el('td', null, e.platform || '-'));
+      r.appendChild(el('td', null, e.model_raw || e.model || '-'));
+      r.appendChild(el('td', null, e.stream ? '流式' : '非流式'));
+      var st = el('td', null, String(e.status || ''));
+      st.className = e.ok ? 'ok' : 'bad';
+      r.appendChild(st);
+      r.appendChild(el('td', null, (e.duration_ms || 0) + 'ms'));
+      var tok = (e.prompt_tokens || e.output_tokens)
+        ? (e.prompt_tokens || 0) + ' / ' + (e.output_tokens || 0) : '-';
+      r.appendChild(el('td', null, tok));
+      var err = el('td', 'hint', e.err ? String(e.err).slice(0, 80) : '');
+      r.appendChild(err);
+      tbody.appendChild(r);
+    });
+    table.appendChild(tbody);
+    box.appendChild(table);
+  }
+
   function show() {
     var all = document.querySelectorAll('section.view');
     for (var i = 0; i < all.length; i++) all[i].hidden = true;
@@ -108,6 +158,7 @@
     for (var j = 0; j < links.length; j++) {
       links[j].classList.toggle('on', links[j].getAttribute('data-view') === VIEW);
     }
+    api('/panel/agg/api/requests?limit=30').then(renderRequests).catch(function () {});
     api('/panel/agg/api/overview').then(render).catch(function (e) {
       var box = document.getElementById('aggPlatformBox');
       if (box) box.textContent = '读取失败：' + e.message + '（可能没填 api_key）';

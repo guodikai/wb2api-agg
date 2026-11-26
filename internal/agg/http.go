@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/misakano7545/workbuddy2api-panel/internal/channel"
 	"github.com/misakano7545/workbuddy2api-panel/internal/creds"
@@ -29,11 +30,13 @@ type Mux struct {
 	Panel http.Handler
 	// Store 凭据目录：用于把扩展平台账号合并进「账号池」。
 	Store *creds.Store
+	// ReqLog 请求事件日志（跨平台）。nil 时不记录。
+	ReqLog *ReqLog
 }
 
 // Wrap 返回包好中间件的 handler，把它塞进 http.Server.Handler 即可。
 func Wrap(next http.Handler, reg *channel.Registry) http.Handler {
-	return &Mux{Next: next, Registry: reg, Panel: buildPanel(), Store: sharedStore()}
+	return &Mux{Next: next, Registry: reg, Panel: buildPanel(), Store: sharedStore(), ReqLog: sharedReqLog()}
 }
 
 func (m *Mux) maxBody() int64 {
@@ -88,7 +91,15 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	target := SplitModel(req.Model)
 	if !target.Explicit {
 		restore()
-		m.Next.ServeHTTP(w, r)
+		started := time.Now()
+		rw := &statusWriter{ResponseWriter: w, code: http.StatusOK}
+		m.Next.ServeHTTP(rw, r)
+		m.logEvent(ReqEvent{
+			Time: started, Platform: string(channel.KindWorkBuddy), Model: req.Model, ModelRaw: req.Model,
+			Stream: req.Stream == nil || *req.Stream, Status: rw.code, OK: rw.code < 400,
+			DurationMs: time.Since(started).Milliseconds(), BytesOut: rw.bytes,
+			ClientIP: clientIP(r), Outcome: outcomeOf(rw.code),
+		})
 		return
 	}
 
@@ -101,6 +112,9 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// 适配器输出统一是 SSE；客户端要非流式时聚合后再回。
 	stream := req.Stream == nil || *req.Stream
+	started := time.Now()
+	ev := ReqEvent{Time: started, Platform: string(target.Kind), Model: target.Model,
+		ModelRaw: req.Model, Stream: stream, ClientIP: clientIP(r)}
 	if stream {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
@@ -108,15 +122,26 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		flusher, _ := w.(http.Flusher)
 		fw := &flushWriter{w: w, f: flusher}
-		if err := adapter.Chat(r.Context(), "", target.Model, body, fw); err != nil {
+		chatErr := adapter.Chat(r.Context(), "", target.Model, body, fw)
+		if chatErr != nil {
 			// 头已发出，只能写一条错误事件收尾
-			_, _ = fw.Write([]byte("data: " + errEvent(err) + "\n\n"))
+			_, _ = fw.Write([]byte("data: " + errEvent(chatErr) + "\n\n"))
 		}
+		ev.Status, ev.OK, ev.Err = http.StatusOK, chatErr == nil, errText(chatErr)
+		ev.Outcome = "stream"
+		if chatErr != nil {
+			ev.Outcome = "upstream_error"
+		}
+		ev.DurationMs, ev.BytesOut = time.Since(started).Milliseconds(), fw.n
+		m.logEvent(ev)
 		return
 	}
 
 	var buf bytes.Buffer
 	if err := adapter.Chat(r.Context(), "", target.Model, body, &buf); err != nil {
+		ev.Status, ev.Err, ev.Outcome = http.StatusBadGateway, errText(err), "upstream_error"
+		ev.DurationMs = time.Since(started).Milliseconds()
+		m.logEvent(ev)
 		writeJSONError(w, http.StatusBadGateway, "upstream_error", "%s", err.Error())
 		return
 	}
@@ -125,6 +150,9 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadGateway, "empty_response", "上游没有返回任何文本")
 		return
 	}
+	ev.Status, ev.OK, ev.Outcome = http.StatusOK, true, "sync"
+	ev.DurationMs, ev.BytesOut = time.Since(started).Milliseconds(), int64(buf.Len())
+	m.logEvent(ev)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(map[string]any{
@@ -141,10 +169,12 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 type flushWriter struct {
 	w io.Writer
 	f http.Flusher
+	n int64
 }
 
 func (fw *flushWriter) Write(p []byte) (int, error) {
 	n, err := fw.w.Write(p)
+	fw.n += int64(n)
 	if fw.f != nil {
 		fw.f.Flush()
 	}
