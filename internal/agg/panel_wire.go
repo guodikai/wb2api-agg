@@ -43,8 +43,6 @@ func buildPanel() http.Handler {
 		return nil
 	}
 
-	base := os.Getenv("WB_DOUBAO_BASE") // 测试/私有化部署用，生产留空
-
 	return panelagg.New(panelagg.Config{
 		RecentRequests: func(limit int) any {
 			if l := sharedReqLog(); l != nil {
@@ -52,7 +50,6 @@ func buildPanel() http.Handler {
 			}
 			return []any{}
 		},
-		DoubaoBase: base,
 		APIKey: cfg.APIKey,
 		Store:  store,
 		Client: codearts.New(0),
