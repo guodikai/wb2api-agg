@@ -171,7 +171,7 @@ func (h *Handler) codeartsModels(w http.ResponseWriter, r *http.Request) {
 
 // startLogin 生成授权链接（PKCE + ticket），把私钥留在内存等回调。
 func (h *Handler) startLogin(w http.ResponseWriter, r *http.Request) {
-	pkce, err := codearts.NewPKCE()
+	verifier, challenge, err := codearts.PKCE()
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "pkce_error", err.Error())
 		return
@@ -184,7 +184,7 @@ func (h *Handler) startLogin(w http.ResponseWriter, r *http.Request) {
 	ticket := randomHex(16)
 	const port = 18234 // 仅用于拼 redirect_uri；我们不会真的监听它
 	h.mu.Lock()
-	h.pending[ticket] = &pendingLogin{verifier: pkce.Verifier, jwk: jwk, port: port, createdAt: h.cfg.Now()}
+	h.pending[ticket] = &pendingLogin{verifier: verifier, jwk: jwk, port: port, createdAt: h.cfg.Now()}
 	// 清理超过 15 分钟的挂起登录，避免内存堆积
 	for k, p := range h.pending {
 		if h.cfg.Now().Sub(p.createdAt) > 15*time.Minute {
@@ -195,7 +195,7 @@ func (h *Handler) startLogin(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ticket":    ticket,
-		"login_url": h.cfg.Client.BuildAuthorizeURL(h.cfg.Login, ticket, pkce.Challenge, pkce.Method, port),
+		"login_url": h.cfg.Client.BuildAuthorizeURL(h.cfg.Login, ticket, challenge, "SHA-256", port),
 		"hint":      "浏览器打开 login_url 完成授权；把跳转后（打不开）的地址整条粘贴到下方完成登录",
 	})
 }
@@ -251,14 +251,13 @@ func (h *Handler) completeLogin(w http.ResponseWriter, r *http.Request) {
 		} else if sub := identityFromRefreshToken(out.RefreshToken); sub != "" {
 			userID = sub
 		} else {
-			writeErrf(w, http.StatusBadGateway, "no_identity",
-				"换取成功但无法确定账号身份（换码字段：%s）", strings.Join(topLevelKeys(out.RawJSON), ", "))
+			writeErr(w, http.StatusBadGateway, "no_identity",
+				"换取成功但无法确定账号身份：caller-identity / current-user / refresh_token 都没给出 id")
 			return
 		}
 	}
 	if userID == "" {
-		writeErrf(w, http.StatusBadGateway, "no_user_id",
-			"上游没有返回可用的用户标识（换码字段：%s）", strings.Join(topLevelKeys(out.RawJSON), ", "))
+		writeErr(w, http.StatusBadGateway, "no_user_id", "上游没有返回可用的用户标识")
 		return
 	}
 
