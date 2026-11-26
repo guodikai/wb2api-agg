@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/misakano7545/workbuddy2api-panel/internal/channel"
+	"github.com/misakano7545/workbuddy2api-panel/internal/creds"
 )
 
 // Mux 聚合中间件。
@@ -26,11 +27,13 @@ type Mux struct {
 	MaxBody int64
 	// Panel 我们自己的小面板（/panel/agg/）。nil 时这些路径交回上游。
 	Panel http.Handler
+	// Store 凭据目录：用于把扩展平台账号合并进「账号池」。
+	Store *creds.Store
 }
 
 // Wrap 返回包好中间件的 handler，把它塞进 http.Server.Handler 即可。
 func Wrap(next http.Handler, reg *channel.Registry) http.Handler {
-	return &Mux{Next: next, Registry: reg, Panel: buildPanel()}
+	return &Mux{Next: next, Registry: reg, Panel: buildPanel(), Store: sharedStore()}
 }
 
 func (m *Mux) maxBody() int64 {
@@ -44,6 +47,11 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// 我们自己的面板页：只认 /panel/agg/ 前缀，其余 /panel/* 交给上游。
 	if m.Panel != nil && strings.HasPrefix(r.URL.Path, "/panel/agg") {
 		m.Panel.ServeHTTP(w, r)
+		return
+	}
+	// 账号池合并：把码道等平台的账号塞进上游 overview 响应。
+	if r.Method == http.MethodGet && r.URL.Path == "/panel/api/overview" && m.Store != nil {
+		serveOverviewWithPlatforms(w, m.Next, r, m.Store)
 		return
 	}
 	// 主面板 HTML 注入我们的扩展脚本（上游文件零改动）。
