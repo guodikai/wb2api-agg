@@ -205,35 +205,40 @@ func (h *Handler) completeLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	userID := extractUserID(out)
 	userName := out.UserName
-	// 兜底：换码响应没带身份时，用刚拿到的 STS 凭据签一次 current/user 补上。
+	domainID := out.DomainID
+
+	// 换码响应通常只在旧通道里带身份；真实 STS 的 authorization_code 不带。
+	// 按参照项目的顺序兜底：caller-identity → current/user → refresh_token 的 sub。
 	if userID == "" || userName == "" {
-		if info, err := h.cfg.Client.FetchCurrentUser(r.Context(), codearts.SignCredential{
+		cred := codearts.SignCredential{
 			AccessKeyID:     out.Credentials.AccessKeyID,
 			SecretAccessKey: out.Credentials.SecretAccessKey,
 			SecurityToken:   out.Credentials.SecurityToken,
-		}, ""); err == nil {
-			if v := pickID(info); v != "" {
-				userID = v
+		}
+		if id, ierr := h.cfg.Client.ResolveIdentity(r.Context(), cred, out.RefreshToken); ierr == nil {
+			if userID == "" {
+				userID = id.UserID
 			}
-			if v := pickName(info); v != "" {
-				userName = v
+			if userName == "" {
+				userName = id.UserName
+			}
+			if domainID == "" {
+				domainID = id.DomainID
 			}
 		} else {
-			// 只记键名级别的诊断，不打值
-			keys := topLevelKeys(out.RawJSON)
-			writeErr(w, http.StatusBadGateway, "no_user_id",
-				"换码响应缺身份字段（%s），补取 current/user 也失败：%v", strings.Join(keys, ", "), err)
+			writeErr(w, http.StatusBadGateway, "no_identity",
+				"换取成功但无法确定账号身份：%v（换码字段：%s）", ierr, strings.Join(topLevelKeys(out.RawJSON), ", "))
 			return
 		}
 	}
 	if userID == "" {
-		keys := topLevelKeys(out.RawJSON)
 		writeErr(w, http.StatusBadGateway, "no_user_id",
-			"上游没有返回可用的用户标识（换码字段：%s）", strings.Join(keys, ", "))
+			"上游没有返回可用的用户标识（换码字段：%s）", strings.Join(topLevelKeys(out.RawJSON), ", "))
 		return
 	}
+
 	rec := creds.CodeArtsRecord{
-		UserID: userID, UserName: userName, DomainID: out.DomainID,
+		UserID: userID, UserName: userName, DomainID: domainID,
 		RefreshTok: out.RefreshToken, Verifier: p.verifier,
 		DPoPJWK:         map[string]string(p.jwk),
 		AccessKeyID:     out.Credentials.AccessKeyID,
