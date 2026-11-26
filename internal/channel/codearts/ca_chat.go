@@ -81,6 +81,9 @@ func (c *Client) ChatStream(ctx context.Context, model string, body []byte, cred
 	}
 	endpoint := opt.Endpoint
 	if endpoint == "" {
+		endpoint = c.chatEndpointOverride
+	}
+	if endpoint == "" {
 		endpoint = SnapEngineApiHost + EpChatV2
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(raw))

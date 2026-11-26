@@ -115,6 +115,8 @@ type Client struct {
 	stsHost    string
 	snapHost   string
 	portalHost string
+	// chatEndpointOverride 仅测试用：覆盖 chat 端点（httptest）。
+	chatEndpointOverride string
 }
 
 // NewClient 生产默认客户端。
