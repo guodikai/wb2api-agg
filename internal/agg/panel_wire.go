@@ -12,6 +12,7 @@ import (
 	"os"
 
 	"github.com/misakano7545/workbuddy2api-panel/internal/channel/codearts"
+	"github.com/misakano7545/workbuddy2api-panel/internal/channel/doubao"
 	"github.com/misakano7545/workbuddy2api-panel/internal/creds"
 	"github.com/misakano7545/workbuddy2api-panel/internal/panelagg"
 )
