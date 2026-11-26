@@ -46,7 +46,7 @@ func buildPanel() http.Handler {
 	return panelagg.New(panelagg.Config{
 		APIKey: cfg.APIKey,
 		Store:  store,
-		Client: codearts.NewClient(),
+		Client: codearts.New(0),
 		Login:  codearts.DefaultLoginConfig(),
 	})
 }
