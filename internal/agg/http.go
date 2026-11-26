@@ -46,6 +46,12 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		m.Panel.ServeHTTP(w, r)
 		return
 	}
+	// 主面板 HTML 注入我们的扩展脚本（上游文件零改动）。
+	if m.Panel != nil && r.Method == http.MethodGet &&
+		(r.URL.Path == "/panel/" || r.URL.Path == "/panel/index.html") {
+		injectPanelScript(w, m.Next, r)
+		return
+	}
 	if r.Method != http.MethodPost || !strings.HasPrefix(r.URL.Path, "/v1/chat/completions") {
 		m.Next.ServeHTTP(w, r)
 		return
@@ -190,4 +196,50 @@ func writeJSONError(w http.ResponseWriter, status int, code, format string, args
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"error": map[string]any{"code": code, "message": msg, "type": "invalid_request_error"},
 	})
+}
+
+
+// captureWriter 记录响应，用于在主面板 HTML 里插入一行 script。
+type captureWriter struct {
+	header http.Header
+	code   int
+	body   bytes.Buffer
+}
+
+func (c *captureWriter) Header() http.Header { return c.header }
+func (c *captureWriter) WriteHeader(code int) { c.code = code }
+func (c *captureWriter) Write(p []byte) (int, error) { return c.body.Write(p) }
+
+// injectPanelScript 把 <script src="/panel/agg/panel.js"> 插到 </body> 前。
+// 任何异常（非 200、非 HTML、找不到 </body>）都原样透传，绝不让主面板打不开。
+func injectPanelScript(w http.ResponseWriter, next http.Handler, r *http.Request) {
+	cw := &captureWriter{header: make(http.Header), code: http.StatusOK}
+	next.ServeHTTP(cw, r)
+
+	body := cw.body.Bytes()
+	ct := cw.header.Get("Content-Type")
+	if cw.code != http.StatusOK || !strings.Contains(strings.ToLower(ct), "text/html") ||
+		!bytes.Contains(body, []byte("</body>")) {
+		for k, vs := range cw.header {
+			for _, v := range vs {
+				w.Header().Add(k, v)
+			}
+		}
+		w.WriteHeader(cw.code)
+		_, _ = w.Write(body)
+		return
+	}
+
+	const tag = `<script src="/panel/agg/panel.js" defer></script>`
+	out := bytes.Replace(body, []byte("</body>"), []byte(tag+"</body>"), 1)
+	for k, vs := range cw.header {
+		if strings.EqualFold(k, "Content-Length") {
+			continue
+		}
+		for _, v := range vs {
+			w.Header().Add(k, v)
+		}
+	}
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(out)
 }
