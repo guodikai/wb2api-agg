@@ -35,7 +35,8 @@ type CodeArtsRecord struct {
 	CreditsUsed      float64 `json:"credits_used,omitempty"`
 	CreditsExpiring  float64 `json:"credits_expiring,omitempty"`
 	CreditsPeriod    string  `json:"credits_period,omitempty"`
-	CreditsUpdatedAt string  `json:"credits_updated_at,omitempty"`
+	CreditsUpdatedAt string             `json:"credits_updated_at,omitempty"`
+	CreditsBreakdown map[string]float64 `json:"credits_breakdown,omitempty"`
 }
 
 // Auth 转成参照实现的账号对象（导出版本，供面板等外部包使用）。

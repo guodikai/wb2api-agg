@@ -115,6 +115,8 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	started := time.Now()
 	ev := ReqEvent{Time: started, Platform: string(target.Kind), Model: target.Model,
 		ModelRaw: req.Model, Stream: stream, ClientIP: clientIP(r)}
+	usage := &channel.Usage{}
+	r = r.WithContext(channel.WithUsage(r.Context(), usage))
 	if stream {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
@@ -133,6 +135,10 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			ev.Outcome = "upstream_error"
 		}
 		ev.DurationMs, ev.BytesOut = time.Since(started).Milliseconds(), fw.n
+		ev.PromptTokens, ev.OutputTokens, ev.Effort = usage.Prompt, usage.Completion, usage.Effort
+		if usage.Model != "" && usage.Model != target.Model {
+			ev.ModelEff = usage.Model
+		}
 		m.logEvent(ev)
 		return
 	}
@@ -152,6 +158,10 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	ev.Status, ev.OK, ev.Outcome = http.StatusOK, true, "sync"
 	ev.DurationMs, ev.BytesOut = time.Since(started).Milliseconds(), int64(buf.Len())
+	ev.PromptTokens, ev.OutputTokens, ev.Effort = usage.Prompt, usage.Completion, usage.Effort
+	if usage.Model != "" && usage.Model != target.Model {
+		ev.ModelEff = usage.Model
+	}
 	m.logEvent(ev)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)

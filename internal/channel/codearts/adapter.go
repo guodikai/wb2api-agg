@@ -93,6 +93,6 @@ func (a *Adapter) Chat(ctx context.Context, accountID, model string, body []byte
 		return err
 	}
 	defer rc.Close()
-	_, err = io.Copy(w, rc)
-	return err
+	// 逐行透传 + 解析 usage（io.Copy 拿不到 token 用量）
+	return copySSEWithUsage(ctx, w, rc, model)
 }

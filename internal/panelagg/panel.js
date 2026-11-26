@@ -53,6 +53,15 @@
     box.id = 'aggPlatformBox';
     sec.appendChild(box);
 
+    var h3c = el('h2', null, '积分构成 / 余额趋势');
+    h3c.style.marginTop = '18px';
+    sec.appendChild(h3c);
+    var cbox = el('div');
+    cbox.id = 'aggCreditBox';
+    cbox.className = 'hint';
+    cbox.textContent = '加载中…';
+    sec.appendChild(cbox);
+
     var h3 = el('h2', null, '最近请求');
     h3.style.marginTop = '18px';
     sec.appendChild(h3);
@@ -149,6 +158,65 @@
     box.appendChild(table);
   }
 
+  function renderCredits(data, hist) {
+    var box = document.getElementById('aggCreditBox');
+    if (!box) return;
+    box.className = '';
+    box.innerHTML = '';
+
+    var ca = (data.codearts || [])[0];
+    if (ca && ca.credits_breakdown) {
+      var t = el('table', 'table');
+      var th = el('thead'); var tr = el('tr');
+      ['口径', '数值'].forEach(function (x) { tr.appendChild(el('th', null, x)); });
+      th.appendChild(tr); t.appendChild(th);
+      var tb = el('tbody');
+      Object.keys(ca.credits_breakdown).forEach(function (k) {
+        var r = el('tr');
+        r.appendChild(el('td', null, k));
+        r.appendChild(el('td', null, String(ca.credits_breakdown[k])));
+        tb.appendChild(r);
+      });
+      t.appendChild(tb);
+      box.appendChild(t);
+
+      var sum = el('p', 'hint', '剩余 ' + (ca.credits || 0) + ' / 总额 ' + (ca.credits_total || 0) +
+        '　已用 ' + (ca.credits_used || 0) + '　即将过期 ' + (ca.credits_expiring || 0));
+      box.appendChild(sum);
+    }
+
+    var samples = (hist && hist.samples) || [];
+    if (samples.length >= 2) {
+      var vals = samples.map(function (s) { return s.credits || 0; });
+      var max = Math.max.apply(null, vals), min = Math.min.apply(null, vals);
+      var w = 520, hgt = 90, pad = 4;
+      var pts = vals.map(function (v, i) {
+        var x = pad + i * (w - 2 * pad) / (vals.length - 1);
+        var y = hgt - pad - (max === min ? (hgt - 2 * pad) / 2 : (v - min) / (max - min) * (hgt - 2 * pad));
+        return x.toFixed(1) + ',' + y.toFixed(1);
+      }).join(' ');
+      var svgNS = 'http://www.w3.org/2000/svg';
+      var svg = document.createElementNS(svgNS, 'svg');
+      svg.setAttribute('viewBox', '0 0 ' + w + ' ' + hgt);
+      svg.setAttribute('width', '100%');
+      svg.setAttribute('height', hgt);
+      var poly = document.createElementNS(svgNS, 'polyline');
+      poly.setAttribute('points', pts);
+      poly.setAttribute('fill', 'none');
+      poly.setAttribute('stroke', '#4a9eff');
+      poly.setAttribute('stroke-width', '1.6');
+      svg.appendChild(poly);
+      box.appendChild(svg);
+      var note = el('p', 'hint', '最近 ' + samples.length + ' 个采样点，区间 ' + min + ' ~ ' + max +
+        '（每 10 分钟一次）');
+      box.appendChild(note);
+    } else if (ca) {
+      box.appendChild(el('p', 'hint', '趋势数据还不够（每 10 分钟采一次），过一会儿再看。'));
+    } else {
+      box.textContent = '还没有码道账号。';
+    }
+  }
+
   function show() {
     var all = document.querySelectorAll('section.view');
     for (var i = 0; i < all.length; i++) all[i].hidden = true;
@@ -159,6 +227,10 @@
       links[j].classList.toggle('on', links[j].getAttribute('data-view') === VIEW);
     }
     api('/panel/agg/api/requests?limit=30').then(renderRequests).catch(function () {});
+    Promise.all([
+      api('/panel/agg/api/overview'),
+      api('/panel/agg/api/credits/history?hours=72&platform=codearts')
+    ]).then(function (r) { renderCredits(r[0], r[1]); }).catch(function () {});
     api('/panel/agg/api/overview').then(render).catch(function (e) {
       var box = document.getElementById('aggPlatformBox');
       if (box) box.textContent = '读取失败：' + e.message + '（可能没填 api_key）';

@@ -24,6 +24,7 @@ type ReqEvent struct {
 	RequestID    string    `json:"request_id,omitempty"`
 	Platform     string    `json:"platform"`
 	Model        string    `json:"model,omitempty"`
+	ModelEff     string    `json:"model_eff,omitempty"`
 	ModelRaw     string    `json:"model_raw,omitempty"`
 	Account      string    `json:"account,omitempty"`
 	Stream       bool      `json:"stream"`

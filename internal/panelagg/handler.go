@@ -34,6 +34,8 @@ type Config struct {
 	Now    func() time.Time
 	// RecentRequests 返回最近 n 条跨平台请求事件（agg 注入，避免包循环依赖）。
 	RecentRequests func(limit int) any
+	// CreditSamples 返回最近 N 小时的积分样本（agg 注入）。
+	CreditSamples func(hours int, platform string) any
 }
 
 // Handler 面板请求分发。
@@ -85,6 +87,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.overview(w, r)
 	case r.URL.Path == "/panel/agg/api/codearts/login" && r.Method == http.MethodPost:
 		h.startLogin(w, r)
+	case r.URL.Path == "/panel/agg/api/credits/history" && r.Method == http.MethodGet:
+		h.creditsHistory(w, r)
 	case r.URL.Path == "/panel/agg/api/requests" && r.Method == http.MethodGet:
 		h.recentRequests(w, r)
 	case r.URL.Path == "/panel/agg/api/codearts/models" && r.Method == http.MethodGet:

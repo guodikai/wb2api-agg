@@ -11,6 +11,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/misakano7545/workbuddy2api-panel/internal/channel"
 	"github.com/misakano7545/workbuddy2api-panel/internal/channel/codearts"
 	"github.com/misakano7545/workbuddy2api-panel/internal/creds"
 )
@@ -78,6 +79,11 @@ func refreshCodeArtsCredits(ctx context.Context, st *creds.Store) {
 		rec.CreditsExpiring = expiring
 		rec.CreditsPeriod = period
 		rec.CreditsUpdatedAt = time.Now().Format(time.RFC3339)
+		rec.CreditsBreakdown = info.Breakdown()
+		SharedCreditHistory().Append(CreditSample{
+			Time: time.Now(), Platform: string(channel.KindCodeArts), Account: id,
+			Credits: remain, Total: total, Used: used, Expiring: expiring,
+		})
 		if err := st.Save(creds.PlatformCodeArts, id, &rec); err != nil {
 			log.Printf("[agg] 码道积分落盘失败 %s: %v", id, err)
 		}

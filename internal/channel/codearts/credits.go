@@ -82,6 +82,30 @@ func (p *PackageInfo) Summary() (total, used, remain, expiring float64, period s
 	return
 }
 
+// Breakdown 积分构成（面板展示用）：口径名 → 剩余值。
+// 只取有意义的项，值为 0 的也保留（说明该口径存在但已用尽）。
+func (p *PackageInfo) Breakdown() map[string]float64 {
+	out := map[string]float64{}
+	for _, m := range p.Metrics {
+		if !m.Show {
+			continue
+		}
+		switch m.Name {
+		case "usageTotalPackageCredit":
+			out["总积分包"] = m.PackageCreditRemain
+			out["用户池"] = m.PackageCreditUserPool
+			out["即将过期"] = m.PackageCreditExpiring
+		case "usageBasicPackageCredit":
+			out["基础积分包"] = m.PackageCreditRemain
+		case "usageTokenChatMessages":
+			out["对话 token 用量"] = m.UsageTokenNum
+		case "usageDataChatMessages":
+			out["对话次数"] = m.Value
+		}
+	}
+	return out
+}
+
 // FetchPackageInfo 查一次积分/套餐（只读，不消耗额度）。
 func (c *Client) FetchPackageInfo(ctx context.Context, cred SignCredential) (*PackageInfo, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, SnapEngineApiHost+EpStatisticsPlugin, nil)
