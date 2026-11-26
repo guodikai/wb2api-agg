@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"sort"
+	"strings"
 
 	"github.com/misakano7545/workbuddy2api-panel/internal/creds"
 )
@@ -85,10 +86,14 @@ func collectPlatformAccounts(st *creds.Store) []map[string]any {
 				"码道 · "+name+"（"+state+"）",
 				"cn",
 				map[string]any{
-					"disabled":        disabled,
-					"last_err":        lastErr,
-					"platform":        "codearts",
-					"platform_expiry": rec.Expiration,
+					"disabled":                   disabled,
+					"last_err":                   lastErr,
+					"platform":                   "codearts",
+					"platform_expiry":            rec.Expiration,
+					"credits":                    int64(rec.Credits),
+					"credits_total":              int64(rec.CreditsTotal),
+					"credits_raw":                int64(rec.Credits),
+					"credits_earliest_expiry":    creditsExpiryOf(rec),
 				},
 			))
 		}
@@ -136,6 +141,15 @@ func mergeOverviewAccounts(body []byte, st *creds.Store) ([]byte, bool) {
 		return body, false
 	}
 	return out, true
+}
+
+// creditsExpiryOf 码道没有"分批到期"，用套餐周期结束日代替（面板会显示成到期时间）。
+func creditsExpiryOf(rec creds.CodeArtsRecord) string {
+	parts := strings.SplitN(rec.CreditsPeriod, "~", 2)
+	if len(parts) == 2 {
+		return strings.TrimSpace(parts[1])
+	}
+	return ""
 }
 
 func toAnySlice(in []map[string]any) []any {
