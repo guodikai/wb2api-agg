@@ -119,6 +119,13 @@ func (h *Handler) overview(w http.ResponseWriter, r *http.Request) {
 		Expires   string `json:"sts_expires,omitempty"`
 		UpdatedAt string `json:"updated_at,omitempty"`
 		State     string `json:"state"`
+		// 积分（后台 10 分钟刷新一次）
+		Credits   float64            `json:"credits"`
+		Total     float64            `json:"credits_total"`
+		Used      float64            `json:"credits_used"`
+		Expiring  float64            `json:"credits_expiring"`
+		Period    string             `json:"credits_period,omitempty"`
+		Breakdown map[string]float64 `json:"credits_breakdown,omitempty"`
 	}
 	out := struct {
 		Platforms []string `json:"platforms"`
