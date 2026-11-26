@@ -74,6 +74,9 @@ func (c *Client) ChatStream(ctx context.Context, model string, body []byte, cred
 		}
 	}
 	payload["model"] = model
+	// 内部一律走流式：客户端要非流式时由聚合层（agg.Mux）收完再合成 JSON。
+	// 若把 stream=false 原样转给上游，拿回的是整段 JSON，SSE 解析器会读不到任何内容。
+	payload["stream"] = true
 
 	raw, err := json.Marshal(payload)
 	if err != nil {
