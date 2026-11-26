@@ -1,11 +1,9 @@
-// pa_requests.go 面板：最近请求事件（跨平台）。
+// pa_requests.go 面板：最近请求事件（数据由 agg 注入，避免包循环依赖）。
 package panelagg
 
 import (
 	"net/http"
 	"strconv"
-
-	"github.com/misakano7545/workbuddy2api-panel/internal/agg"
 )
 
 // recentRequests 返回最近 n 条请求事件（新的在前）。
@@ -16,10 +14,9 @@ func (h *Handler) recentRequests(w http.ResponseWriter, r *http.Request) {
 			n = x
 		}
 	}
-	log := agg.SharedReqLog()
-	if log == nil {
+	if h.cfg.RecentRequests == nil {
 		writeJSON(w, http.StatusOK, map[string]any{"events": []any{}, "note": "日志未启用"})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"events": log.Recent(n)})
+	writeJSON(w, http.StatusOK, map[string]any{"events": h.cfg.RecentRequests(n)})
 }

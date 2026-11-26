@@ -34,6 +34,8 @@ type Config struct {
 	Now    func() time.Time
 	// DoubaoBase 测试用：覆盖豆包上游地址（空 = 生产 www.doubao.com）。
 	DoubaoBase string
+	// RecentRequests 返回最近 n 条跨平台请求事件（由 agg 注入，避免包循环依赖）。
+	RecentRequests func(limit int) any
 }
 
 // Handler 面板请求分发。
