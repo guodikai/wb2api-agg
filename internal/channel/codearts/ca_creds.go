@@ -127,8 +127,10 @@ func NewClient() *Client {
 	return &Client{
 		http:       &http.Client{Timeout: 30 * time.Second},
 		streamHTTP: &http.Client{Timeout: 0},
-		stsHost:    cfg.STSHost,
-		snapHost:   cfg.SnapManager,
+		stsHost:  cfg.STSHost,
+		// 注意：模型/身份/chat 全在 SnapEngineApiHost 根路径下；
+		// SnapManagerHost（根 + /snap-manager）只服务登录 ticket 那条老通道。
+		snapHost:   SnapEngineApiHost,
 		portalHost: cfg.PortalHost,
 	}
 }
