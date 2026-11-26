@@ -32,6 +32,8 @@ type Config struct {
 	Client *codearts.Client
 	Login  codearts.LoginConfig
 	Now    func() time.Time
+	// RecentRequests 返回最近 n 条跨平台请求事件（agg 注入，避免包循环依赖）。
+	RecentRequests func(limit int) any
 }
 
 // Handler 面板请求分发。
