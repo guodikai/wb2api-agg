@@ -91,7 +91,6 @@ func (a *Adapter) Chat(ctx context.Context, accountID, model string, body []byte
 	}
 	defer rc.Close()
 
-	done := false
 	err = ReadSSE(rc, func(data []byte) error {
 		frame := make([]byte, 0, len(data)+8)
 		frame = append(frame, "data: "...)
@@ -100,15 +99,14 @@ func (a *Adapter) Chat(ctx context.Context, accountID, model string, body []byte
 		_, werr := w.Write(frame)
 		return werr
 	})
+	// ReadSSE 在遇到上游 [DONE] 时返回 io.EOF——那个标记已被我们消费掉，
+	// 所以无论哪条路径结束，都要给下游补一个 [DONE]，保证帧序列完整。
 	if err == io.EOF {
-		done = true
 		err = nil
 	}
 	if err != nil {
 		return err
 	}
-	if !done {
-		_, _ = w.Write([]byte("data: [DONE]\n\n"))
-	}
+	_, _ = w.Write([]byte("data: [DONE]\n\n"))
 	return nil
 }
