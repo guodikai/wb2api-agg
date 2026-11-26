@@ -85,6 +85,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.overview(w, r)
 	case r.URL.Path == "/panel/agg/api/codearts/login" && r.Method == http.MethodPost:
 		h.startLogin(w, r)
+	case r.URL.Path == "/panel/agg/api/requests" && r.Method == http.MethodGet:
+		h.recentRequests(w, r)
 	case r.URL.Path == "/panel/agg/api/codearts/models" && r.Method == http.MethodGet:
 		h.codeartsModels(w, r)
 	case r.URL.Path == "/panel/agg/api/codearts/complete" && r.Method == http.MethodPost:
