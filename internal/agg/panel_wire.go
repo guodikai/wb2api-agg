@@ -12,7 +12,6 @@ import (
 	"os"
 
 	"github.com/misakano7545/workbuddy2api-panel/internal/channel/codearts"
-	"github.com/misakano7545/workbuddy2api-panel/internal/channel/doubao"
 	"github.com/misakano7545/workbuddy2api-panel/internal/creds"
 	"github.com/misakano7545/workbuddy2api-panel/internal/panelagg"
 )
@@ -44,10 +43,7 @@ func buildPanel() http.Handler {
 		return nil
 	}
 
-	base := os.Getenv("WB_DOUBAO_BASE") // 测试/私有化部署用，生产留空
-
 	return panelagg.New(panelagg.Config{
-		DoubaoBase: base,
 		APIKey: cfg.APIKey,
 		Store:  store,
 		Client: codearts.New(0),
