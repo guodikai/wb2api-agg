@@ -295,39 +295,6 @@ func (h *Handler) takePending(ticket string) (*pendingLogin, bool) {
 	return p, true
 }
 
-// extractUserID 兼容几种可能的身份字段位置。
-func extractUserID(out *codearts.TokenResponse) string {
-	if v := strings.TrimSpace(out.UserID); v != "" {
-		return v
-	}
-	// 兜底：从原始 JSON 里按常见路径找
-	var m map[string]any
-	if json.Unmarshal(out.RawJSON, &m) != nil {
-		return ""
-	}
-	pick := func(v any) string {
-		if s, ok := v.(string); ok {
-			return strings.TrimSpace(s)
-		}
-		return ""
-	}
-	for _, k := range []string{"user_id", "userId", "uid", "account_id", "accountId", "subject", "sub"} {
-		if v := pick(m[k]); v != "" {
-			return v
-		}
-	}
-	for _, obj := range []string{"user", "principal", "account", "profile"} {
-		if sub, ok := m[obj].(map[string]any); ok {
-			for _, k := range []string{"id", "user_id", "userId", "uid", "name"} {
-				if v := pick(sub[k]); v != "" {
-					return v
-				}
-			}
-		}
-	}
-	return ""
-}
-
 // pickID / pickName 从任意层级的身份对象里取 id 与显示名。
 func pickID(m map[string]any) string {
 	for _, k := range []string{"user_id", "userId", "userID", "id", "uid", "account_id", "accountId", "subject", "sub", "principal_id"} {
