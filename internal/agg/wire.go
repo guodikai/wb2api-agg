@@ -38,17 +38,15 @@ func RegistryFromEnv() *channel.Registry {
 		log.Printf("[agg] 凭据目录不可用（%s）：%v；仅启用上游平台", dir, err)
 		return reg
 	}
-	ids, err := store.List(creds.PlatformCodeArts)
-	if err != nil || len(ids) == 0 {
-		return reg
-	}
-
+	// 无论有没有账号都注册通道：凭据是运行期从目录里读的，
+	// 这样面板登录/导入新账号后**不需要重启**，下一个请求就能用。
 	client := codearts.New(0)
 	src := creds.NewCodeArtsSource(store, client, codearts.DefaultLoginConfig())
 	if err := reg.Register(codearts.NewAdapter(client, src)); err != nil {
 		log.Printf("[agg] 注册码道平台失败：%v", err)
 		return reg
 	}
+	ids, _ := store.List(creds.PlatformCodeArts)
 	log.Printf("[agg] 已启用平台: %v（凭据目录 %s，码道账号 %d 个）",
 		kindsOf(reg), filepath.Clean(dir), len(ids))
 	// 码道积分后台刷新（只读 statistics/plugin，10 分钟一轮）
