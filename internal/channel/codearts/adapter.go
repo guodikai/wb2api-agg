@@ -83,6 +83,9 @@ func (a *Adapter) Chat(ctx context.Context, accountID, model string, body []byte
 		}
 	}
 
+	// 把实际使用的账号上报给中间件，请求日志才能显示"平台 + 账号"
+	channel.ReportUsage(ctx, channel.Usage{Account: acct.UserName})
+
 	cred := SignCredential{
 		AccessKeyID:     acct.AccessKeyID,
 		SecretAccessKey: acct.SecretAccessKey,

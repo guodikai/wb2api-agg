@@ -129,3 +129,86 @@ func mergeModels(body []byte, reg *channel.Registry, ctx context.Context) ([]byt
 	}
 	return out, true
 }
+
+
+// servePanelModelsWithPlatforms 主面板「模型与档位」页：追加扩展平台模型。
+//
+// 上游只列 WorkBuddy（cn/global 两个 realm）。这里按同样的字段形状追加，
+// realm/platform 填平台名，前端就会按新的分组显示；档位相关字段留空
+// （码道不暴露 effort 列表，不要编造）。
+func servePanelModelsWithPlatforms(w http.ResponseWriter, next http.Handler, r *http.Request, reg *channel.Registry) {
+	cw := &captureWriter{header: make(http.Header), code: http.StatusOK}
+	next.ServeHTTP(cw, r)
+	body := cw.body.Bytes()
+
+	if cw.code == http.StatusOK && reg != nil {
+		if merged, ok := mergePanelModels(body, reg, r.Context()); ok {
+			body = merged
+		}
+	}
+
+	for k, vs := range cw.header {
+		if strings.EqualFold(k, "Content-Length") {
+			continue
+		}
+		for _, v := range vs {
+			w.Header().Add(k, v)
+		}
+	}
+	w.Header().Set("Content-Length", itoa(len(body)))
+	w.WriteHeader(cw.code)
+	_, _ = w.Write(body)
+}
+
+func mergePanelModels(body []byte, reg *channel.Registry, ctx context.Context) ([]byte, bool) {
+	var doc map[string]any
+	if err := json.Unmarshal(body, &doc); err != nil {
+		return body, false
+	}
+	list, ok := doc["models"].([]any)
+	if !ok {
+		return body, false
+	}
+	seen := make(map[string]bool, len(list))
+	for _, it := range list {
+		if m, ok := it.(map[string]any); ok {
+			if id, _ := m["id"].(string); id != "" {
+				seen[id] = true
+			}
+		}
+	}
+
+	added := 0
+	for _, k := range reg.Kinds() {
+		if k == channel.KindWorkBuddy {
+			continue
+		}
+		for _, mi := range cachedModels(ctx, reg, k) {
+			id := string(k) + ":" + mi.ID
+			if seen[id] {
+				continue
+			}
+			seen[id] = true
+			list = append(list, map[string]any{
+				"id":                 id,
+				"name":               mi.ID,
+				"realm":              string(k),
+				"platform":           string(k),
+				"supported_efforts":  []any{},
+				"supports_reasoning": true,
+				"credits":            0,
+				"description":        "由 " + string(k) + " 平台提供（经聚合网关接入）",
+			})
+			added++
+		}
+	}
+	if added == 0 {
+		return body, false
+	}
+	doc["models"] = list
+	out, err := json.Marshal(doc)
+	if err != nil {
+		return body, false
+	}
+	return out, true
+}

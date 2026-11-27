@@ -62,6 +62,11 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		serveRequestLogsMerged(w, r, m.Next, m.ReqLog)
 		return
 	}
+	// 主面板「模型与档位」页：追加扩展平台模型（带平台分组）。
+	if r.Method == http.MethodGet && r.URL.Path == "/panel/api/models" && m.Registry != nil {
+		servePanelModelsWithPlatforms(w, m.Next, r, m.Registry)
+		return
+	}
 	// /v1/models：合并扩展平台模型（客户端才看得到 codearts:xxx）。
 	if r.Method == http.MethodGet && r.URL.Path == "/v1/models" && m.Registry != nil {
 		serveModelsWithPlatforms(w, m.Next, r, m.Registry)
@@ -163,6 +168,8 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		ev.DurationMs, ev.BytesOut = time.Since(started).Milliseconds(), fw.n
 		ev.PromptTokens, ev.OutputTokens, ev.Effort = usage.Prompt, usage.Completion, usage.Effort
+	ev.Account = usage.Account
+		ev.Account = usage.Account
 		if usage.Model != "" && usage.Model != target.Model {
 			ev.ModelEff = usage.Model
 		}
@@ -185,6 +192,7 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ev.Status, ev.OK, ev.Outcome = http.StatusOK, true, "sync"
 	ev.DurationMs, ev.BytesOut = time.Since(started).Milliseconds(), int64(buf.Len())
 	ev.PromptTokens, ev.OutputTokens, ev.Effort = usage.Prompt, usage.Completion, usage.Effort
+	ev.Account = usage.Account
 	if usage.Model != "" && usage.Model != target.Model {
 		ev.ModelEff = usage.Model
 	}

@@ -11,7 +11,8 @@ type Usage struct {
 	Prompt     int64  `json:"prompt_tokens"`
 	Completion int64  `json:"completion_tokens"`
 	Effort     string `json:"effort,omitempty"`
-	Model      string `json:"model,omitempty"` // 上游实际使用的模型（可能与请求不同）
+	Model      string `json:"model,omitempty"`   // 上游实际使用的模型（可能与请求不同）
+	Account    string `json:"account,omitempty"` // 实际服务本次请求的账号（平台内 id / 用户名）
 }
 
 type usageKey struct{}
@@ -38,6 +39,9 @@ func ReportUsage(ctx context.Context, u Usage) {
 		}
 		if u.Model != "" {
 			sink.Model = u.Model
+		}
+		if u.Account != "" {
+			sink.Account = u.Account
 		}
 	}
 }
