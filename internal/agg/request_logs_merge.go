@@ -18,6 +18,9 @@ import (
 func toUpstreamEntry(e ReqEvent) map[string]any {
 	realm := e.Platform
 	account := e.Platform
+	if e.Account != "" {
+		account = e.Platform + " · " + e.Account
+	}
 	outcome := e.Outcome
 	if outcome == "" {
 		if e.OK {
