@@ -57,11 +57,6 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		serveOverviewWithPlatforms(w, m.Next, r, m.Store)
 		return
 	}
-	// /v1/models：合并扩展平台模型（客户端才看得到 codearts:xxx）
-	if r.Method == http.MethodGet && r.URL.Path == "/v1/models" && m.Registry != nil {
-		serveModelsWithPlatforms(w, m.Next, r, m.Registry)
-		return
-	}
 	// 主面板 HTML 注入我们的扩展脚本（上游文件零改动）。
 	if m.Panel != nil && r.Method == http.MethodGet &&
 		(r.URL.Path == "/panel/" || r.URL.Path == "/panel/index.html") {
@@ -126,10 +121,19 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("X-Accel-Buffering", "no")
-		w.WriteHeader(http.StatusOK)
+		// 不提前 WriteHeader：让第一次 Write 隐式提交，这样自动选路失败时还能安全回退。
 		flusher, _ := w.(http.Flusher)
 		fw := &flushWriter{w: w, f: flusher}
 		chatErr := adapter.Chat(r.Context(), "", target.Model, body, fw)
+		if chatErr != nil && autoRouted && fw.n == 0 {
+			// 一个字都没写出去 → 头未提交，回退给 WorkBuddy 原路重试
+			for _, h := range []string{"Content-Type", "Cache-Control", "X-Accel-Buffering"} {
+				w.Header().Del(h)
+			}
+			restore()
+			m.Next.ServeHTTP(w, r)
+			return
+		}
 		if chatErr != nil {
 			// 头已发出，只能写一条错误事件收尾
 			_, _ = fw.Write([]byte("data: " + errEvent(chatErr) + "\n\n"))
@@ -149,11 +153,10 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var buf bytes.Buffer
-	if err := adapter.Chat(r.Context(), "", target.Model, body, &buf); err != nil {
-		ev.Status, ev.Err, ev.Outcome = http.StatusBadGateway, errText(err), "upstream_error"
-		ev.DurationMs = time.Since(started).Milliseconds()
-		m.logEvent(ev)
-		writeJSONError(w, http.StatusBadGateway, "upstream_error", "%s", err.Error())
+	if err := adapter.Chat(r.Context(), "", target.Model, body, &buf); err != nil && autoRouted {
+		// 自动选路失败 → 静默回退（客户端只看到 WorkBuddy 的结果）
+		restore()
+		m.Next.ServeHTTP(w, r)
 		return
 	}
 	content := collectSSEText(buf.String())
