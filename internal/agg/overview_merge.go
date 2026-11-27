@@ -83,7 +83,7 @@ func collectPlatformAccounts(st *creds.Store) []map[string]any {
 			}
 			out = append(out, platformAccount(
 				uidPrefixCodeArts+rec.UserID,
-				"码道 · "+name+"（"+state+"）",
+				"码道 · "+name,
 				"cn",
 				map[string]any{
 					"disabled":                   disabled,
