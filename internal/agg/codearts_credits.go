@@ -59,7 +59,7 @@ func refreshCodeArtsCredits(ctx context.Context, st *creds.Store, src codearts.C
 		if src == nil {
 			continue
 		}
-		_, acct, err := src.For(ctx, id)
+		acct, err := src.For(ctx, id)
 		if err != nil || acct == nil {
 			log.Printf("[agg] 码道积分刷新取凭据失败 %s: %v", id, err)
 			continue
