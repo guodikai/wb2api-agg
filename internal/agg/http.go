@@ -89,6 +89,14 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	target := SplitModel(req.Model)
+	// 裸名（不含 cn:/global: 这类 realm 前缀）自动跨平台选路
+	autoRouted := false
+	if !target.Explicit && !strings.HasPrefix(req.Model, "cn:") && !strings.HasPrefix(req.Model, "global:") {
+		if k, mdl, ok := m.autoPick(r.Context(), r, req.Model); ok {
+			target = Target{Kind: k, Explicit: true, Model: mdl}
+			autoRouted = true
+		}
+	}
 	if !target.Explicit {
 		restore()
 		started := time.Now()
