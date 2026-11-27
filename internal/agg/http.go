@@ -52,6 +52,10 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		m.Panel.ServeHTTP(w, r)
 		return
 	}
+	// 扩展平台账号的行内操作（余额/签到/任务…）：我们接管，避免上游 404。
+	if strings.HasPrefix(r.URL.Path, "/panel/api/accounts/") && m.handleExtAccountAction(w, r, m.Store) {
+		return
+	}
 	// 账号池合并：把码道等平台的账号塞进上游 overview 响应。
 	if r.Method == http.MethodGet && r.URL.Path == "/panel/api/overview" && m.Store != nil {
 		serveOverviewWithPlatforms(w, m.Next, r, m.Store)
@@ -65,6 +69,11 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// 主面板「模型与档位」页：追加扩展平台模型（带平台分组）。
 	if r.Method == http.MethodGet && r.URL.Path == "/panel/api/models" && m.Registry != nil {
 		servePanelModelsWithPlatforms(w, m.Next, r, m.Registry)
+		return
+	}
+	// 主面板「积分构成」页：追加扩展平台的积分构成。
+	if r.Method == http.MethodGet && r.URL.Path == "/panel/api/packages" && m.Store != nil {
+		servePackagesWithPlatforms(w, m.Next, r, m.Store)
 		return
 	}
 	// /v1/models：合并扩展平台模型（客户端才看得到 codearts:xxx）。
