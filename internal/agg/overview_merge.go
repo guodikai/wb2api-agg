@@ -72,7 +72,7 @@ func collectPlatformAccounts(st *creds.Store) []map[string]any {
 			if name == "" {
 				name = id
 			}
-			state := "正常"
+			_ = state
 			disabled := false
 			var lastErr string
 			switch {
