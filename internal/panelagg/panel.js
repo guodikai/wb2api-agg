@@ -53,6 +53,15 @@
     box.id = 'aggPlatformBox';
     sec.appendChild(box);
 
+    var h3s = el('h2', null, '签到状态');
+    h3s.style.marginTop = '18px';
+    sec.appendChild(h3s);
+    var sbox = el('div');
+    sbox.id = 'aggSigninBox';
+    sbox.className = 'hint';
+    sbox.textContent = '加载中…';
+    sec.appendChild(sbox);
+
     var h3c = el('h2', null, '积分构成 / 余额趋势');
     h3c.style.marginTop = '18px';
     sec.appendChild(h3c);
@@ -158,6 +167,45 @@
     box.appendChild(table);
   }
 
+  function renderSignin(d) {
+    var box = document.getElementById('aggSigninBox');
+    if (!box) return;
+    var jobs = (d && d.jobs) || [];
+    if (!jobs.length) { box.textContent = '还没有签到记录'; return; }
+    box.className = '';
+    var t = el('table', 'table');
+    var th = el('thead'); var tr = el('tr');
+    ['任务', '结果', '上次运行', '摘要'].forEach(function (x) { tr.appendChild(el('th', null, x)); });
+    th.appendChild(tr); t.appendChild(th);
+    var tb = el('tbody');
+    var label = { wb: 'WorkBuddy 签到', codearts: '码道签到' };
+    jobs.forEach(function (j) {
+      var r = el('tr');
+      r.appendChild(el('td', null, label[j.name] || j.name));
+      var st = el('td', null, j.missing ? '未运行' : (j.ok ? '成功' : '失败(' + j.exit_code + ')'));
+      st.className = j.missing ? 'hint' : (j.ok ? 'ok' : 'bad');
+      r.appendChild(st);
+      r.appendChild(el('td', null, (j.finished_at || '-').replace('T', ' ')));
+      r.appendChild(el('td', 'hint', j.summary || ''));
+      tb.appendChild(r);
+      if (j.log_tail) {
+        var tr2 = el('tr');
+        var td2 = el('td');
+        td2.colSpan = 4;
+        var pre = el('pre', 'hint', j.log_tail);
+        pre.style.whiteSpace = 'pre-wrap';
+        pre.style.fontSize = '11.5px';
+        pre.style.maxHeight = '120px';
+        pre.style.overflow = 'auto';
+        td2.appendChild(pre);
+        tr2.appendChild(td2);
+        tb.appendChild(tr2);
+      }
+    });
+    t.appendChild(tb);
+    box.appendChild(t);
+  }
+
   function renderCredits(data, hist) {
     var box = document.getElementById('aggCreditBox');
     if (!box) return;
@@ -227,6 +275,7 @@
       links[j].classList.toggle('on', links[j].getAttribute('data-view') === VIEW);
     }
     api('/panel/agg/api/requests?limit=30').then(renderRequests).catch(function () {});
+    api('/panel/agg/api/signin').then(renderSignin).catch(function () {});
     Promise.all([
       api('/panel/agg/api/overview'),
       api('/panel/agg/api/credits/history?hours=72&platform=codearts')

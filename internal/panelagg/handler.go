@@ -39,6 +39,10 @@ type Config struct {
 	CreditSamples func(hours int, platform string) any
 	// CodeArtsCredential 返回 "AK|SK|STS"（供签到脚本用，不暴露 RT）。
 	CodeArtsCredential func(ctx context.Context, account string) (string, error)
+	// SigninDir 签到状态目录（脚本跑完写 JSON）。
+	SigninDir string
+	// SigninLogDir 签到日志目录。
+	SigninLogDir string
 }
 
 // Handler 面板请求分发。
@@ -96,6 +100,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.recentRequests(w, r)
 	case r.URL.Path == "/panel/agg/api/codearts/credentials" && r.Method == http.MethodGet:
 		h.codeartsCredentials(w, r)
+	case r.URL.Path == "/panel/agg/api/signin" && r.Method == http.MethodGet:
+		h.signinStatus(w, r)
 	case r.URL.Path == "/panel/agg/api/codearts/models" && r.Method == http.MethodGet:
 		h.codeartsModels(w, r)
 	case r.URL.Path == "/panel/agg/api/codearts/complete" && r.Method == http.MethodPost:

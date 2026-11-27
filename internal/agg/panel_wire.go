@@ -6,8 +6,6 @@
 package agg
 
 import (
-	"context"
-	"errors"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -17,8 +15,6 @@ import (
 	"github.com/misakano7545/workbuddy2api-panel/internal/creds"
 	"github.com/misakano7545/workbuddy2api-panel/internal/panelagg"
 )
-
-var errNoStore = errors.New("凭据目录不可用")
 
 func buildPanel() http.Handler {
 	cfgPath := os.Getenv("WB_AGG_CONFIG")
@@ -48,24 +44,8 @@ func buildPanel() http.Handler {
 	}
 
 	return panelagg.New(panelagg.Config{
-		CodeArtsCredential: func(ctx context.Context, account string) (string, error) {
-			st := sharedStore()
-			if st == nil {
-				return "", errNoStore
-			}
-			src := creds.NewCodeArtsSource(st, codearts.New(0), codearts.DefaultLoginConfig())
-			acct, err := src.For(ctx, account)
-			if err != nil {
-				return "", err
-			}
-			return acct.AccessKeyID + "|" + acct.SecretAccessKey + "|" + acct.CloudDragonTok, nil
-		},
-		CreditSamples: func(hours int, platform string) any {
-			if h := SharedCreditHistory(); h != nil {
-				return h.Recent(hours, platform)
-			}
-			return []any{}
-		},
+		SigninDir:     "/opt/wb-agg-daily/status",
+		SigninLogDir:  "/opt/wb-agg-daily/logs",
 		RecentRequests: func(limit int) any {
 			if l := sharedReqLog(); l != nil {
 				return l.Recent(limit)
