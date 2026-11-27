@@ -57,6 +57,11 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		serveOverviewWithPlatforms(w, m.Next, r, m.Store)
 		return
 	}
+	// /v1/models：合并扩展平台模型（客户端才看得到 codearts:xxx）
+	if r.Method == http.MethodGet && r.URL.Path == "/v1/models" && m.Registry != nil {
+		serveModelsWithPlatforms(w, m.Next, r, m.Registry)
+		return
+	}
 	// 主面板 HTML 注入我们的扩展脚本（上游文件零改动）。
 	if m.Panel != nil && r.Method == http.MethodGet &&
 		(r.URL.Path == "/panel/" || r.URL.Path == "/panel/index.html") {
