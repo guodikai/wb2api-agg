@@ -283,4 +283,48 @@
   } else {
     install();
   }
+
+
+
+  // ---- 模型与档位页：修正扩展平台模型的能力列文案 ----
+  // 码道不提供 supported_efforts，上游模板会渲染成"固定档 · 默认档上游未报"，
+  // 看着像坏了。这里只对 codearts: 开头的行改成"平台不提供档位信息"，
+  // 不改上游文件（改的是 DOM）。
+  function fixModelEffortCells() {
+    var body = document.getElementById('mdBody');
+    if (!body) return;
+    var rows = body.querySelectorAll('tr');
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      if (r.dataset.minisFixed === '1') continue;
+      var idEl = r.querySelector('.id');
+      var text = (idEl ? idEl.textContent : '') || '';
+      if (text.indexOf('codearts:') !== 0) continue;
+      var spans = r.querySelectorAll('td span');
+      for (var j = 0; j < spans.length; j++) {
+        var t = spans[j].textContent || '';
+        if (t.indexOf('固定档') >= 0 || t === '不支持思考') {
+          spans[j].textContent = '平台不提供档位信息';
+          spans[j].title = '码道接口不返回 reasoning effort 列表；请求会按上游默认档走';
+        }
+      }
+      r.dataset.minisFixed = '1';
+    }
+  }
+
+  function watchModelTable() {
+    var body = document.getElementById('mdBody');
+    if (!body || body.dataset.minisWatch === '1') return;
+    body.dataset.minisWatch = '1';
+    var timer = null;
+    var mo = new MutationObserver(function () {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(fixModelEffortCells, 120);
+    });
+    mo.observe(body, { childList: true, subtree: true });
+    fixModelEffortCells();
+  }
+
+  // 面板切到「模型与档位」时表格才建出来，这里挂一个轻量轮询（1 秒一次，开销可忽略）
+  setInterval(watchModelTable, 1000);
 })();

@@ -71,6 +71,16 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		servePanelModelsWithPlatforms(w, m.Next, r, m.Registry)
 		return
 	}
+	// 主面板「实时任务」：并入扩展平台账号（签到归脚本，标注清楚）
+	if r.Method == http.MethodGet && r.URL.Path == "/panel/api/tasks/live" && m.Store != nil {
+		serveTasksLiveMerged(w, m.Next, r, m.Store)
+		return
+	}
+	// 主面板「用量」：并入扩展平台的 token 用量
+	if r.Method == http.MethodGet && r.URL.Path == "/panel/api/usage" && m.ReqLog != nil {
+		serveUsageMerged(w, m.Next, r, m.ReqLog)
+		return
+	}
 	// 主面板「积分构成」页：追加扩展平台的积分构成。
 	if r.Method == http.MethodGet && r.URL.Path == "/panel/api/packages" && m.Store != nil {
 		servePackagesWithPlatforms(w, m.Next, r, m.Store)
