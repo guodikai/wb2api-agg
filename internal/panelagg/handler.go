@@ -6,6 +6,7 @@
 package panelagg
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	_ "embed"
@@ -36,6 +37,8 @@ type Config struct {
 	RecentRequests func(limit int) any
 	// CreditSamples 返回最近 N 小时的积分样本（agg 注入）。
 	CreditSamples func(hours int, platform string) any
+	// CodeArtsCredential 返回 "AK|SK|STS"（供签到脚本用，不暴露 RT）。
+	CodeArtsCredential func(ctx context.Context, account string) (string, error)
 }
 
 // Handler 面板请求分发。
@@ -91,6 +94,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.creditsHistory(w, r)
 	case r.URL.Path == "/panel/agg/api/requests" && r.Method == http.MethodGet:
 		h.recentRequests(w, r)
+	case r.URL.Path == "/panel/agg/api/codearts/credentials" && r.Method == http.MethodGet:
+		h.codeartsCredentials(w, r)
 	case r.URL.Path == "/panel/agg/api/codearts/models" && r.Method == http.MethodGet:
 		h.codeartsModels(w, r)
 	case r.URL.Path == "/panel/agg/api/codearts/complete" && r.Method == http.MethodPost:
