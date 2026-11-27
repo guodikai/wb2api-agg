@@ -52,7 +52,7 @@ func RegistryFromEnv() *channel.Registry {
 	log.Printf("[agg] 已启用平台: %v（凭据目录 %s，码道账号 %d 个）",
 		kindsOf(reg), filepath.Clean(dir), len(ids))
 	// 码道积分后台刷新（只读 statistics/plugin，10 分钟一轮）
-	StartCodeArtsCreditsRefresh(context.Background(), store, 0)
+	StartCodeArtsCreditsRefresh(context.Background(), store, src, 0)
 	return reg
 }
 

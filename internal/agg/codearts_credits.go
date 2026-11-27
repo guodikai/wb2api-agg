@@ -18,7 +18,7 @@ import (
 
 // StartCodeArtsCreditsRefresh 起一个后台循环刷新码道积分。
 // 返回的 cancel 用于退出；重复调用会起多个循环，调用方自己保证只调一次。
-func StartCodeArtsCreditsRefresh(ctx context.Context, st *creds.Store, interval time.Duration) context.CancelFunc {
+func StartCodeArtsCreditsRefresh(ctx context.Context, st *creds.Store, src codearts.CredentialSource, interval time.Duration) context.CancelFunc {
 	if st == nil {
 		return func() {}
 	}
@@ -28,7 +28,7 @@ func StartCodeArtsCreditsRefresh(ctx context.Context, st *creds.Store, interval 
 	ctx, cancel := context.WithCancel(ctx)
 	go func() {
 		// 启动先跑一轮（面板马上就有数），之后按间隔。
-		refreshCodeArtsCredits(ctx, st)
+		refreshCodeArtsCredits(ctx, st, src)
 		t := time.NewTicker(interval)
 		defer t.Stop()
 		for {
@@ -36,7 +36,7 @@ func StartCodeArtsCreditsRefresh(ctx context.Context, st *creds.Store, interval 
 			case <-ctx.Done():
 				return
 			case <-t.C:
-				refreshCodeArtsCredits(ctx, st)
+				refreshCodeArtsCredits(ctx, st, src)
 			}
 		}
 	}()
@@ -44,7 +44,7 @@ func StartCodeArtsCreditsRefresh(ctx context.Context, st *creds.Store, interval 
 }
 
 // refreshCodeArtsCredits 对每个码道账号查一次积分并落盘。
-func refreshCodeArtsCredits(ctx context.Context, st *creds.Store) {
+func refreshCodeArtsCredits(ctx context.Context, st *creds.Store, src codearts.CredentialSource) {
 	ids, err := st.List(creds.PlatformCodeArts)
 	if err != nil {
 		return
@@ -54,22 +54,29 @@ func refreshCodeArtsCredits(ctx context.Context, st *creds.Store) {
 	}
 	client := codearts.New(30 * time.Second)
 	for _, id := range ids {
-		var rec creds.CodeArtsRecord
-		if err := st.Load(creds.PlatformCodeArts, id, &rec); err != nil {
+		// 关键：走 CredentialSource，STS 临期会自动刷新。
+		// 直接读凭据文件里的 security_token 会在 1 小时后过期（APIG.0602）。
+		if src == nil {
 			continue
 		}
-		if rec.AccessKeyID == "" || rec.SecretAccessKey == "" {
+		_, acct, err := src.For(ctx, id)
+		if err != nil || acct == nil {
+			log.Printf("[agg] 码道积分刷新取凭据失败 %s: %v", id, err)
 			continue
 		}
 		cctx, cancel := context.WithTimeout(ctx, 25*time.Second)
 		info, err := client.FetchPackageInfo(cctx, codearts.SignCredential{
-			AccessKeyID:     rec.AccessKeyID,
-			SecretAccessKey: rec.SecretAccessKey,
-			SecurityToken:   rec.SecurityToken,
+			AccessKeyID:     acct.AccessKeyID,
+			SecretAccessKey: acct.SecretAccessKey,
+			SecurityToken:   acct.CloudDragonTok,
 		})
 		cancel()
 		if err != nil {
 			log.Printf("[agg] 码道积分刷新失败 %s: %v", id, err)
+			continue
+		}
+		var rec creds.CodeArtsRecord
+		if err := st.Load(creds.PlatformCodeArts, id, &rec); err != nil {
 			continue
 		}
 		total, used, remain, expiring, period := info.Summary()
