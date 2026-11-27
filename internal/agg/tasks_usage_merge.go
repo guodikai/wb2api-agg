@@ -44,6 +44,25 @@ func mergeTasksLive(body []byte, st *creds.Store) ([]byte, bool) {
 	}
 	accounts, _ := doc["accounts"].([]any)
 
+	// WorkBuddy：只给本机脚本覆盖的账号挂"脚本签到结果"，其它账号不动
+	wb := loadSignin("wb")
+	signed := wbSignedUIDs()
+	if len(accounts) > 0 && len(signed) > 0 {
+		for i, raw := range accounts {
+			a, ok := raw.(map[string]any)
+			if !ok {
+				continue
+			}
+			uid, _ := a["uid"].(string)
+			if uid == "" || !signed[firstN(uid, 8)] {
+				continue
+			}
+			tasks, _ := a["tasks"].([]any)
+			a["tasks"] = append(tasks, signinAsTask("WorkBuddy 签到（L0NE 脚本）", wb))
+			accounts[i] = a
+		}
+	}
+
 	ids, err := st.List(creds.PlatformCodeArts)
 	if err != nil || len(ids) == 0 {
 		return body, false
@@ -64,17 +83,7 @@ func mergeTasksLive(body []byte, st *creds.Store) ([]byte, bool) {
 			"realm":    "cn",
 			"platform": "codearts",
 			"note":     "签到与任务由 L0NE 脚本负责，网关只做消费与积分",
-			"tasks": []any{map[string]any{
-				"title":          "（由 L0NE 脚本签到，网关不参与）",
-				"task_code":      "external_l0ne",
-				"task_desc":      "码道签到/领奖在服务器上由 L0NE 的 CodeArts-Daily 脚本执行",
-				"accept_status":  "external",
-				"claimed":        false,
-				"credit":         0,
-				"current":        0,
-				"target":         1,
-				"progress_known": true,
-			}},
+			"tasks": []any{signinAsTask("码道签到（L0NE 脚本）", loadSignin("codearts"))},
 		})
 		added++
 	}
@@ -195,6 +204,13 @@ func mergeUsage(body []byte, log *ReqLog) ([]byte, bool) {
 		return body, false
 	}
 	return out, true
+}
+
+func firstN(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n]
 }
 
 func addNum(m map[string]any, key string, delta float64) {
