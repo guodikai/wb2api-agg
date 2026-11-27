@@ -72,7 +72,6 @@ func collectPlatformAccounts(st *creds.Store) []map[string]any {
 			if name == "" {
 				name = id
 			}
-			_ = state
 			disabled := false
 			var lastErr string
 			switch {
@@ -89,6 +88,7 @@ func collectPlatformAccounts(st *creds.Store) []map[string]any {
 					"disabled":                   disabled,
 					"last_err":                   lastErr,
 					"platform":                   "codearts",
+					"state":                      state,
 					"platform_expiry":            rec.Expiration,
 					"credits":                    int64(rec.Credits),
 					"credits_total":              int64(rec.CreditsTotal),
