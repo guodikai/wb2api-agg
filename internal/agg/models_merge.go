@@ -115,9 +115,6 @@ func mergeModels(body []byte, reg *channel.Registry, ctx context.Context) ([]byt
 				"object":   "model",
 				"owned_by": string(k),
 			}
-			if m.Name != "" {
-				item["name"] = m.Name
-			}
 			list = append(list, item)
 			added++
 		}
