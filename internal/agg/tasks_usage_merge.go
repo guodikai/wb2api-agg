@@ -127,7 +127,7 @@ func mergeUsage(body []byte, log *ReqLog) ([]byte, bool) {
 		}
 		k := e.Account
 		if k == "" {
-			k = e.Platform
+			k = "未记录账号（早期请求）"
 		}
 		s := byAccount[k]
 		if s == nil {
