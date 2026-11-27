@@ -6,6 +6,7 @@
 package agg
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -44,6 +45,22 @@ func buildPanel() http.Handler {
 	}
 
 	return panelagg.New(panelagg.Config{
+		// 给签到脚本发短效 STS：不暴露 refresh_token（它只能有一个写者）
+		CodeArtsCredential: func(ctx context.Context, account string) (string, error) {
+			src := creds.NewCodeArtsSource(store, codearts.New(0), codearts.DefaultLoginConfig())
+			acct, err := src.For(ctx, account)
+			if err != nil {
+				return "", err
+			}
+			return acct.AccessKeyID + "|" + acct.SecretAccessKey + "|" + acct.CloudDragonTok, nil
+		},
+		// 积分趋势样本
+		CreditSamples: func(hours int, platform string) any {
+			if h := SharedCreditHistory(); h != nil {
+				return h.Recent(hours, platform)
+			}
+			return []any{}
+		},
 		SigninDir:     "/opt/wb-agg-daily/status",
 		SigninLogDir:  "/opt/wb-agg-daily/logs",
 		RecentRequests: func(limit int) any {
