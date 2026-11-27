@@ -107,8 +107,12 @@ func mergeRequestLogs(body []byte, r *http.Request, log *ReqLog) ([]byte, bool) 
 	}
 
 	// 按上游的筛选参数过滤我们的记录（model / account / client_ip / outcome）
+	// 跳过 workbuddy：那部分上游 reqlog 已经记了，合并会重复一行。
 	q := r.URL.Query()
 	for _, e := range ours {
+		if e.Platform == "workbuddy" {
+			continue
+		}
 		if mv := q.Get("model"); mv != "" && !strings.Contains(strings.ToLower(e.ModelRaw), strings.ToLower(mv)) {
 			continue
 		}
