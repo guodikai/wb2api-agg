@@ -185,14 +185,14 @@ func (m *Mux) autoPick(ctx context.Context, r *http.Request, model string) (chan
 		s := st.byKnd[k]
 		c := cand{kind: k, model: id}
 		switch {
-		case s.urgent:
-			c.score = 300
 		case !s.earliest.IsZero():
 			days := time.Until(s.earliest).Hours() / 24
 			if days < 0 {
 				days = 0
 			}
-			c.score = 100 - days
+			c.score = 200 - days
+		case s.urgent:
+			c.score = 100 // 只知道"马上要过期"，不知道日期：排在已知日期之后
 		case s.total > 0:
 			c.score = 50 + 50*(s.remain/s.total)
 		default:
@@ -203,7 +203,12 @@ func (m *Mux) autoPick(ctx context.Context, r *http.Request, model string) (chan
 		}
 		cands = append(cands, c)
 	}
-	sort.SliceStable(cands, func(i, j int) bool { return cands[i].score > cands[j].score })
+	sort.SliceStable(cands, func(i, j int) bool {
+		if cands[i].score != cands[j].score {
+			return cands[i].score > cands[j].score
+		}
+		return cands[i].kind < cands[j].kind // 同分确定性排序，避免路由抖动
+	})
 
 	for _, c := range cands {
 		if c.score < 0 {
