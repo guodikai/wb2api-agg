@@ -12,6 +12,7 @@
 package agg
 
 import (
+	"fmt"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -83,7 +84,7 @@ func mergeTasksLive(body []byte, st *creds.Store) ([]byte, bool) {
 			"realm":    "cn",
 			"platform": "codearts",
 			"note":     "签到与任务由 L0NE 脚本负责，网关只做消费与积分",
-			"tasks": []any{signinAsTask("码道签到（L0NE 脚本）", loadSignin("codearts"))},
+			"tasks": []any{codeartsSigninTask()},
 		})
 		added++
 	}
@@ -233,4 +234,17 @@ func copyHeaders(w http.ResponseWriter, h http.Header) {
 			w.Header().Add(k, v)
 		}
 	}
+}
+
+
+// codeartsSigninTask 码道签到任务：脚本结果 + 今天的真实积分增量。
+func codeartsSigninTask() map[string]any {
+	res := loadSignin("codearts")
+	t := signinAsTask("码道签到（L0NE 脚本）", res)
+	if d, from, to, ok := todayCreditDelta("codearts"); ok && d != 0 {
+		t["task_desc"] = strings.TrimSpace(fmt.Sprintf("%v\n今天实际 %+.2f 积分（%.2f → %.2f）",
+			t["task_desc"], d, from, to))
+		t["credit"] = d
+	}
+	return t
 }

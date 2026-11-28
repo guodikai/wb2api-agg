@@ -53,6 +53,15 @@
     box.id = 'aggPlatformBox';
     sec.appendChild(box);
 
+    var h3a = el('h2', null, '账号操作');
+    h3a.style.marginTop = '18px';
+    sec.appendChild(h3a);
+    var opsBox = el('div');
+    opsBox.id = 'aggAcctOps';
+    opsBox.className = 'hint';
+    opsBox.textContent = '加载中…';
+    sec.appendChild(opsBox);
+
     var h3s = el('h2', null, '签到状态');
     h3s.style.marginTop = '18px';
     sec.appendChild(h3s);
@@ -167,6 +176,56 @@
     box.appendChild(table);
   }
 
+  function accountOps(key) {
+    var box = document.getElementById('aggAcctOps');
+    if (!box) return;
+    api('/panel/agg/api/overview').then(function (d) {
+      var list = d.codearts || [];
+      if (!list.length) { box.textContent = '还没有码道账号'; return; }
+      box.className = '';
+      box.innerHTML = '';
+      var t = el('table', 'table');
+      var th = el('thead'); var tr = el('tr');
+      ['账号', '状态', '积分', '操作'].forEach(function (x) { tr.appendChild(el('th', null, x)); });
+      th.appendChild(tr); t.appendChild(th);
+      var tb = el('tbody');
+      list.forEach(function (a) {
+        var r = el('tr');
+        var c1 = el('td'); c1.appendChild(el('code', null, a.user || a.id)); r.appendChild(c1);
+        var st = el('td', null, a.state === 'ok' ? '正常' : a.state);
+        st.className = a.state === 'ok' ? 'ok' : 'warn';
+        r.appendChild(st);
+        var cr = el('td', null, (a.credits || 0) + ' / ' + (a.credits_total || 0));
+        r.appendChild(cr);
+        var td = el('td');
+        var b1 = el('button', 'xs ghost', '刷新');
+        b1.onclick = function () { act('/panel/agg/api/accounts/refresh', a.id); };
+        var b2 = el('button', 'xs ghost', '删除');
+        b2.style.marginLeft = '6px';
+        b2.onclick = function () {
+          if (!confirm('删除码道账号 ' + (a.user || a.id) + '？')) return;
+          act('/panel/agg/api/accounts/delete', a.id, true);
+        };
+        td.appendChild(b1); td.appendChild(b2);
+        r.appendChild(td);
+        tb.appendChild(r);
+      });
+      t.appendChild(tb);
+      box.appendChild(t);
+
+      function act(path, account, del) {
+        fetch(path, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key },
+          body: JSON.stringify({ account: account })
+        }).then(function (r) { return r.json(); }).then(function (j) {
+          alert(j.ok ? (del ? '已删除' : '已刷新') : ('失败: ' + JSON.stringify(j)));
+          if (del) location.reload();
+        }).catch(function (e) { alert('请求失败: ' + e); });
+      }
+    }).catch(function (e) { box.textContent = String(e); });
+  }
+
   function renderSignin(d) {
     var box = document.getElementById('aggSigninBox');
     if (!box) return;
@@ -276,6 +335,7 @@
     }
     api('/panel/agg/api/requests?limit=30').then(renderRequests).catch(function () {});
     api('/panel/agg/api/signin').then(renderSignin).catch(function () {});
+    accountOps(key());
     Promise.all([
       api('/panel/agg/api/overview'),
       api('/panel/agg/api/credits/history?hours=72&platform=codearts')

@@ -123,3 +123,14 @@ func (s *Store) withLock(target string, fn func() error) error {
 	defer func() { _ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN) }()
 	return fn()
 }
+
+
+// Delete 删除一个账号的凭据文件（连同锁文件）。不存在时返回 os.ErrNotExist。
+func (s *Store) Delete(platform, id string) error {
+	p := s.path(platform, id)
+	if err := os.Remove(p); err != nil {
+		return err
+	}
+	_ = os.Remove(p + ".lock")
+	return nil
+}

@@ -2,6 +2,8 @@
 package creds
 
 import (
+	"strings"
+	"sort"
 	"context"
 	"fmt"
 	"os"
@@ -37,6 +39,9 @@ type CodeArtsRecord struct {
 	CreditsPeriod    string  `json:"credits_period,omitempty"`
 	CreditsUpdatedAt string             `json:"credits_updated_at,omitempty"`
 	CreditsBreakdown map[string]float64 `json:"credits_breakdown,omitempty"`
+
+	// Disabled 人工禁用（面板可切换）：不参与选号，凭据保留。
+	Disabled bool `json:"disabled,omitempty"`
 }
 
 // Auth 转成参照实现的账号对象（导出版本，供面板等外部包使用）。
@@ -103,15 +108,62 @@ func (s *CodeArtsSource) Any(ctx context.Context) (string, *auth.Auth, error) {
 	if len(ids) == 0 {
 		return "", nil, fmt.Errorf("没有已登录的码道账号")
 	}
-	var lastErr error
+
+	type cand struct {
+		id      string
+		expiry  time.Time
+		credits float64
+	}
+	cands := make([]cand, 0, len(ids))
 	for _, id := range ids {
-		a, err := s.For(ctx, id)
+		var rec CodeArtsRecord
+		if err := s.Store.Load(PlatformCodeArts, id, &rec); err != nil {
+			continue
+		}
+		if rec.Disabled {
+			continue
+		}
+		cands = append(cands, cand{id: id, expiry: creditsExpiry(rec), credits: rec.Credits})
+	}
+	if len(cands) == 0 {
+		return "", nil, fmt.Errorf("码道账号均已禁用或不可读")
+	}
+	sort.SliceStable(cands, func(i, j int) bool {
+		a, b := cands[i], cands[j]
+		if !a.expiry.IsZero() && !b.expiry.IsZero() {
+			if !a.expiry.Equal(b.expiry) {
+				return a.expiry.Before(b.expiry)
+			}
+		} else if !a.expiry.IsZero() != !b.expiry.IsZero() {
+			return !a.expiry.IsZero()
+		}
+		return a.credits > b.credits
+	})
+
+	var lastErr error
+	for _, c := range cands {
+		a, err := s.For(ctx, c.id)
 		if err == nil {
-			return id, a, nil
+			return c.id, a, nil
 		}
 		lastErr = err
 	}
 	return "", nil, fmt.Errorf("码道账号均不可用: %v", lastErr)
+}
+
+// creditsExpiry 从 "2026-11-01 ~ 2026-12-23" 取右半段。
+func creditsExpiry(rec CodeArtsRecord) time.Time {
+	parts := strings.SplitN(rec.CreditsPeriod, "~", 2)
+	if len(parts) != 2 {
+		return time.Time{}
+	}
+	v := strings.TrimSpace(parts[1])
+	for _, layout := range []string{"2006-01-02", "2006-01-02 15:04:05", "2006-01-02T15:04:05Z07:00"} {
+		if t, err := time.Parse(layout, v); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
 }
 
 // For 指定账号；临近到期先刷新。

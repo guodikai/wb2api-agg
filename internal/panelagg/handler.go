@@ -100,6 +100,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.recentRequests(w, r)
 	case r.URL.Path == "/panel/agg/api/codearts/credentials" && r.Method == http.MethodGet:
 		h.codeartsCredentials(w, r)
+	case r.URL.Path == "/panel/agg/api/accounts/toggle" && r.Method == http.MethodPost:
+		h.codeartsToggle(w, r)
+	case r.URL.Path == "/panel/agg/api/accounts/delete" && r.Method == http.MethodPost:
+		h.codeartsDelete(w, r)
+	case r.URL.Path == "/panel/agg/api/accounts/refresh" && r.Method == http.MethodPost:
+		h.codeartsRefresh(w, r)
 	case r.URL.Path == "/panel/agg/api/signin" && r.Method == http.MethodGet:
 		h.signinStatus(w, r)
 	case r.URL.Path == "/panel/agg/api/codearts/models" && r.Method == http.MethodGet:

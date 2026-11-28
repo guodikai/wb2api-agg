@@ -38,6 +38,10 @@ func loadSignin(name string) SigninResult {
 		return SigninResult{Name: name, Missing: true, Summary: "状态文件损坏"}
 	}
 	r.Name = name
+	// 失败就推一条（去重由 notifier 负责）；成功不打扰
+	if !r.OK && !r.Missing {
+		NotifySignin(name, r.OK, r.Summary)
+	}
 	return r
 }
 
@@ -94,4 +98,35 @@ func wbSignedUIDs() map[string]bool {
 		}
 	}
 	return out
+}
+
+
+// todayCreditDelta 从积分趋势样本算今天的真实增量（首样本 → 末样本）。
+// 返回 (delta, from, to, ok)。
+func todayCreditDelta(platform string) (float64, float64, float64, bool) {
+	h := SharedCreditHistory()
+	if h == nil {
+		return 0, 0, 0, false
+	}
+	samples := h.Recent(24, platform)
+	if len(samples) == 0 {
+		return 0, 0, 0, false
+	}
+	today := time.Now().Format("2006-01-02")
+	var first, last float64
+	found := false
+	for _, s := range samples {
+		if s.Time.Format("2006-01-02") != today {
+			continue
+		}
+		if !found {
+			first = s.Credits
+			found = true
+		}
+		last = s.Credits
+	}
+	if !found {
+		return 0, 0, 0, false
+	}
+	return last - first, first, last, true
 }
