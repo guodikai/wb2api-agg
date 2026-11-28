@@ -31,6 +31,9 @@ type platformStat struct {
 	remain   float64
 	total    float64
 	earliest time.Time
+	// urgent 表示存在 24 小时内到期的积分（如码道每日签到的 100 分），
+	// 这类额度比月度到期更急，排序时顶到最前。
+	urgent bool
 }
 
 type statsCache struct {
@@ -108,6 +111,7 @@ func (m *Mux) loadStats(ctx context.Context, r *http.Request) *statsCache {
 				UID            string  `json:"uid"`
 				Credits        float64 `json:"credits"`
 				CreditsTotal   float64 `json:"credits_total"`
+				CreditsExpiring float64 `json:"credits_expiring"`
 				EarliestExpiry string  `json:"credits_earliest_expiry"`
 				Platform       string  `json:"platform"`
 			} `json:"accounts"`
@@ -124,6 +128,9 @@ func (m *Mux) loadStats(ctx context.Context, r *http.Request) *statsCache {
 				st.kind = k
 				st.remain += a.Credits
 				st.total += a.CreditsTotal
+				if a.CreditsExpiring > 0 {
+					st.urgent = true
+				}
 				if t, err := time.Parse(time.RFC3339, a.EarliestExpiry); err == nil && !t.IsZero() {
 					if st.earliest.IsZero() || t.Before(st.earliest) {
 						st.earliest = t
@@ -178,6 +185,8 @@ func (m *Mux) autoPick(ctx context.Context, r *http.Request, model string) (chan
 		s := st.byKnd[k]
 		c := cand{kind: k, model: id}
 		switch {
+		case s.urgent:
+			c.score = 300
 		case !s.earliest.IsZero():
 			days := time.Until(s.earliest).Hours() / 24
 			if days < 0 {

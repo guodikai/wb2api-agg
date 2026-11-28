@@ -21,12 +21,14 @@ func toUpstreamEntry(e ReqEvent) map[string]any {
 	if e.Account != "" {
 		account = e.Platform + " · " + e.Account
 	}
-	outcome := e.Outcome
-	if outcome == "" {
-		if e.OK {
-			outcome = "ok"
+	// 前端只认 success / http_error / stream_error / interrupted，
+	// 其它字符串一律按异常标红（我们自己的 sync/stream 就会被显示成红色 200）。
+	outcome := "success"
+	if !e.OK {
+		if strings.Contains(e.Outcome, "stream") {
+			outcome = "stream_error"
 		} else {
-			outcome = "upstream_error"
+			outcome = "http_error"
 		}
 	}
 	m := map[string]any{

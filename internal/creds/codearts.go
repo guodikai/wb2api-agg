@@ -123,7 +123,12 @@ func (s *CodeArtsSource) Any(ctx context.Context) (string, *auth.Auth, error) {
 		if rec.Disabled {
 			continue
 		}
-		cands = append(cands, cand{id: id, expiry: creditsExpiry(rec), credits: rec.Credits})
+		exp := creditsExpiry(rec)
+		// 有 24 小时内到期的积分（每日签到那 100 分）→ 视为最急，排最前
+		if rec.CreditsExpiring > 0 {
+			exp = time.Now()
+		}
+		cands = append(cands, cand{id: id, expiry: exp, credits: rec.Credits})
 	}
 	if len(cands) == 0 {
 		return "", nil, fmt.Errorf("码道账号均已禁用或不可读")
