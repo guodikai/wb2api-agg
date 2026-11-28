@@ -214,9 +214,8 @@ func (m *Mux) autoPick(ctx context.Context, r *http.Request, model string) (chan
 		if c.score < 0 {
 			continue
 		}
-		if c.kind == channel.KindWorkBuddy {
-			return "", "", false
-		}
+		// 选中 WorkBuddy 时 kind 返回空（默认通道），但模型 id 一并返回：
+		// 客户端写的大小写未必与上游一致，Mux 会用它把 model 改写成标准 id。
 		return c.kind, c.model, true
 	}
 	return "", "", false

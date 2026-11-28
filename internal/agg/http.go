@@ -127,8 +127,19 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	autoRouted := false
 	if !target.Explicit && !strings.HasPrefix(req.Model, "cn:") && !strings.HasPrefix(req.Model, "global:") {
 		if k, mdl, ok := m.autoPick(r.Context(), r, req.Model); ok {
-			target = Target{Kind: k, Explicit: true, Model: mdl}
-			autoRouted = true
+			if k == "" {
+				// 默认通道（WorkBuddy）：只把模型名改写成它自己的标准 id，
+				// 请求仍原样透传（大小写写错上游会 400，改写后不会）。
+				if mdl != "" && mdl != req.Model {
+					if nb, err := rewriteModelField(body, mdl); err == nil {
+						body = nb
+						req.Model = mdl
+					}
+				}
+			} else {
+				target = Target{Kind: k, Explicit: true, Model: mdl}
+				autoRouted = true
+			}
 		}
 	}
 	if !target.Explicit {
@@ -343,4 +354,19 @@ func injectPanelScript(w http.ResponseWriter, next http.Handler, r *http.Request
 	}
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(out)
+}
+
+
+// rewriteModelField 只改 JSON body 里的 model 字段。
+func rewriteModelField(body []byte, model string) ([]byte, error) {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(body, &m); err != nil {
+		return body, err
+	}
+	v, err := json.Marshal(model)
+	if err != nil {
+		return body, err
+	}
+	m["model"] = v
+	return json.Marshal(m)
 }
