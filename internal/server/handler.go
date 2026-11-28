@@ -1067,6 +1067,15 @@ func (h *Handler) chatCompletions(w http.ResponseWriter, r *http.Request) {
 		h.writeBodyError(w, berr, false)
 		return
 	}
+	// 入站必须是 JSON。上游对畸形体只回「invalid character 'P' looking for beginning of
+	// value」+ code 11101——从这句话看不出是谁把 body 发坏的，而网关此前会原样转发
+	// （2026-11-27 真机实测：body 以 "POST " 开头也照转）。这里提前拦住，并把开头片段
+	// 回给客户端：报的人一眼就能看到自己的客户端到底发了什么，不用等服务端抓包。
+	if trimmed := bytes.TrimSpace(bytes.TrimPrefix(body, []byte("\xef\xbb\xbf"))); !json.Valid(trimmed) {
+		writeOpenAIError(w, http.StatusBadRequest, "invalid_request",
+			fmt.Sprintf("request body is not valid JSON; it starts with %q", logfmt.Truncate(string(trimmed), 48)))
+		return
+	}
 	var peek struct {
 		Stream bool   `json:"stream"`
 		Model  string `json:"model"`
@@ -1594,7 +1603,14 @@ func (h *Handler) chatCompletions(w http.ResponseWriter, r *http.Request) {
 				// refresh token 失效 ≠ 账号不可用：AT 尚未过期时本请求仍会成功
 				// （issue #83 生产实测：refresh 恒 12153 的号 chat 仍 200）。
 				// 这种号不罚、也不换号——直接拿现有 AT 发这一次请求。
-				if errors.As(err, &ue) && ue.Kind == upstream.ErrSessionDead && upstream.SessionDeadButUsable(acct) {
+				// SessionDeadFails>0 例外：chat 侧已真打过 401，JWT 的 exp 不代表可用
+				// （#296 实测被提前 15 天拉黑），继续宣称「仍有效」只会让面板撒谎。
+				usable := upstream.SessionDeadButUsable(acct)
+				if st, ok := h.cfg.Pool.Status(acct.UID); ok && st.SessionDeadFails > 0 {
+					usable = false
+				}
+				if errors.As(err, &ue) && ue.Kind == upstream.ErrSessionDead && usable {
+					h.cfg.Pool.MarkRenewDead(acct.UID)
 					log.Printf("INFO: [server] 账号 %s refresh token 已失效但 access token 仍有效，用现有 token 继续",
 						logfmt.Label(acct.UID, acct.Nickname))
 				} else {
@@ -2074,6 +2090,12 @@ func (h *Handler) chatCompletions(w http.ResponseWriter, r *http.Request) {
 				// 单独一行，排障时能一眼区分「没识别到」与「识别到但拒绝」。
 				log.Printf("WARN: [server] stream acct=%s model=%s: saw %d native tool call block(s) but repaired none (tool names known=%d)",
 					logfmt.Label(acct.UID, acct.Nickname), bareModel, m, len(declaredTools))
+			} else if n := repair.Orphan(); n > 0 {
+				// 正文里有 invoke 头却没有外层 calls 包裹：DeepSeek 系在长上下文下会漏写包裹，
+				// 本仓库的修复器以包裹为锚，这种形态一律透出成正文（客户端不会执行）。
+				// 只报不转：发生率没量到之前，加转换分支是纯风险。见到这条就说明该修了。
+				log.Printf("WARN: [server] stream acct=%s model=%s: 透出 %d 处缺 calls 包裹的 invoke 块（工具调用漏成正文）",
+					logfmt.Label(acct.UID, acct.Nickname), bareModel, n)
 			}
 			// issue #44：声明了 tools 却拿到 finish_reason=stop 且全流零 tool_calls ——
 			// 上游把这个形态当正常收尾，客户端据此认为回合完成、工具一次没跑，用户
@@ -2088,8 +2110,12 @@ func (h *Handler) chatCompletions(w http.ResponseWriter, r *http.Request) {
 				st.toolCalls = 1
 			}
 			if len(declaredTools) > 0 && !stats.SawToolCalls() && stats.FinishReason() == "stop" {
-				log.Printf("INFO: [server] stream acct=%s model=%s: finish_reason=stop with zero tool_calls despite %d declared tool(s) (本轮无工具调用，正常收尾)",
-					logfmt.Label(acct.UID, acct.Nickname), bareModel, len(declaredTools))
+				// 带上用量：tok≈think 时正文几乎是空的（模型想完就收，客户端看到「说到一半」），
+				// tok 远大于 think 才是真的答完了。没有这两个数，事后无法区分这两类收尾。
+				ct, hasCT := stats.Tokens()
+				th, hasTh := stats.Thinking()
+				log.Printf("INFO: [server] stream acct=%s model=%s: finish_reason=stop with zero tool_calls despite %d declared tool(s) (tok=%d think=%d hasTok=%v hasThink=%v 本轮无工具调用，正常收尾)",
+					logfmt.Label(acct.UID, acct.Nickname), bareModel, len(declaredTools), ct, th, hasCT, hasTh)
 			}
 			// 正文截断留痕：finish_reason=length 表示上游在输出额度处切断了这一轮。
 			// 此前 reqlog 不记 finish_reason、日志也没有任何 length 行，「回答写到一半
