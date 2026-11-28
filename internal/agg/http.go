@@ -127,7 +127,7 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	autoRouted := false
 	if !target.Explicit && !strings.HasPrefix(req.Model, "cn:") && !strings.HasPrefix(req.Model, "global:") {
 		if k, mdl, ok := m.autoPick(r.Context(), r, req.Model); ok {
-			if k == "" {
+			if k == "" || k == channel.KindWorkBuddy {
 				// 默认通道（WorkBuddy）：只把模型名改写成它自己的标准 id，
 				// 请求仍原样透传（大小写写错上游会 400，改写后不会）。
 				if mdl != "" && mdl != req.Model {
